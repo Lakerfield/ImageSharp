@@ -1,122 +1,198 @@
-﻿// <copyright file="JpegEncoderTests.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using ImageSharp.Formats;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Metadata;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Tests.TestUtilities.ImageComparison;
+
 using Xunit;
-using Xunit.Abstractions;
-// ReSharper disable InconsistentNaming
 
-namespace ImageSharp.Tests
+namespace SixLabors.ImageSharp.Tests.Formats.Jpg
 {
-    using ImageSharp.Formats.Jpg;
-    using ImageSharp.PixelFormats;
-    using ImageSharp.Processing;
-
-    public class JpegEncoderTests : MeasureFixture
+    public class JpegEncoderTests
     {
-        public static IEnumerable<string> AllBmpFiles => TestImages.Bmp.All;
-
-        public JpegEncoderTests(ITestOutputHelper output)
-            : base(output)
+        public static readonly TheoryData<string, int> QualityFiles =
+        new TheoryData<string, int>
         {
-        }
+            { TestImages.Jpeg.Baseline.Calliphora, 80},
+            { TestImages.Jpeg.Progressive.Fb, 75 }
+        };
+
+        public static readonly TheoryData<JpegSubsample, int> BitsPerPixel_Quality =
+        new TheoryData<JpegSubsample, int>
+        {
+            { JpegSubsample.Ratio420, 40 },
+            { JpegSubsample.Ratio420, 60 },
+            { JpegSubsample.Ratio420, 100 },
+
+            { JpegSubsample.Ratio444, 40 },
+            { JpegSubsample.Ratio444, 60 },
+            { JpegSubsample.Ratio444, 100 },
+        };
+
+        public static readonly TheoryData<string, int, int, PixelResolutionUnit> RatioFiles =
+        new TheoryData<string, int, int, PixelResolutionUnit>
+        {
+            { TestImages.Jpeg.Baseline.Ratio1x1, 1, 1 , PixelResolutionUnit.AspectRatio},
+            { TestImages.Jpeg.Baseline.Snake, 300, 300 , PixelResolutionUnit.PixelsPerInch},
+            { TestImages.Jpeg.Baseline.GammaDalaiLamaGray, 72, 72, PixelResolutionUnit.PixelsPerInch }
+        };
 
         [Theory]
-        [WithFile(TestImages.Jpeg.Baseline.Snake, PixelTypes.StandardImageClass, 75, JpegSubsample.Ratio420)]
-        [WithFile(TestImages.Jpeg.Baseline.Lake, PixelTypes.StandardImageClass, 75, JpegSubsample.Ratio420)]
-        [WithFile(TestImages.Jpeg.Baseline.Snake, PixelTypes.StandardImageClass, 75, JpegSubsample.Ratio444)]
-        [WithFile(TestImages.Jpeg.Baseline.Lake, PixelTypes.StandardImageClass, 75, JpegSubsample.Ratio444)]
-        public void LoadResizeSave<TPixel>(TestImageProvider<TPixel> provider, int quality, JpegSubsample subsample)
-            where TPixel : struct, IPixel<TPixel>
+        [MemberData(nameof(QualityFiles))]
+        public void Encode_PreserveQuality(string imagePath, int quality)
         {
-            using (Image<TPixel> image = provider.GetImage().Resize(new ResizeOptions { Size = new Size(150, 100), Mode = ResizeMode.Max }))
+            var options = new JpegEncoder();
+
+            var testFile = TestFile.Create(imagePath);
+            using (Image<Rgba32> input = testFile.CreateImage())
             {
-                image.MetaData.Quality = quality;
-                image.MetaData.ExifProfile = null; // Reduce the size of the file
-                JpegEncoder encoder = new JpegEncoder();
-                JpegEncoderOptions options = new JpegEncoderOptions { Subsample = subsample, Quality = quality };
-
-                provider.Utility.TestName += $"{subsample}_Q{quality}";
-                provider.Utility.SaveTestOutputFile(image, "png");
-                provider.Utility.SaveTestOutputFile(image, "jpg", encoder, options);
-            }
-        }
-
-        [Theory]
-        [WithFileCollection(nameof(AllBmpFiles), PixelTypes.Rgba32 | PixelTypes.StandardImageClass | PixelTypes.Argb32, JpegSubsample.Ratio420, 75)]
-        [WithFileCollection(nameof(AllBmpFiles), PixelTypes.Rgba32 | PixelTypes.StandardImageClass | PixelTypes.Argb32, JpegSubsample.Ratio444, 75)]
-        public void OpenBmp_SaveJpeg<TPixel>(TestImageProvider<TPixel> provider, JpegSubsample subSample, int quality)
-           where TPixel : struct, IPixel<TPixel>
-        {
-            using (Image<TPixel> image = provider.GetImage())
-            {
-                ImagingTestCaseUtility utility = provider.Utility;
-                utility.TestName += "_" + subSample + "_Q" + quality;
-
-                using (FileStream outputStream = File.OpenWrite(utility.GetTestOutputFileName("jpg")))
+                using (var memStream = new MemoryStream())
                 {
-                    JpegEncoder encoder = new JpegEncoder();
-
-                    image.Save(outputStream, encoder, new JpegEncoderOptions()
-                    {
-                      Subsample = subSample,
-                      Quality = quality
-                    });
-                }
-            }
-        }
-
-        [Fact]
-        public void Encode_IgnoreMetadataIsFalse_ExifProfileIsWritten()
-        {
-            EncoderOptions options = new EncoderOptions()
-            {
-                IgnoreMetadata = false
-            };
-
-            TestFile testFile = TestFile.Create(TestImages.Jpeg.Baseline.Floorplan);
-
-            using (Image input = testFile.CreateImage())
-            {
-                using (MemoryStream memStream = new MemoryStream())
-                {
-                    input.Save(memStream, new JpegFormat(), options);
+                    input.Save(memStream, options);
 
                     memStream.Position = 0;
-                    using (Image output = Image.Load(memStream))
+                    using (var output = Image.Load<Rgba32>(memStream))
                     {
-                        Assert.NotNull(output.MetaData.ExifProfile);
+                        JpegMetadata meta = output.Metadata.GetFormatMetadata(JpegFormat.Instance);
+                        Assert.Equal(quality, meta.Quality);
                     }
                 }
             }
         }
 
-        [Fact]
-        public void Encode_IgnoreMetadataIsTrue_ExifProfileIgnored()
+        [Theory]
+        [WithFile(TestImages.Png.CalliphoraPartial, nameof(BitsPerPixel_Quality), PixelTypes.Rgba32)]
+        [WithTestPatternImages(nameof(BitsPerPixel_Quality), 73, 71, PixelTypes.Rgba32)]
+        [WithTestPatternImages(nameof(BitsPerPixel_Quality), 48, 24, PixelTypes.Rgba32)]
+        [WithTestPatternImages(nameof(BitsPerPixel_Quality), 46, 8, PixelTypes.Rgba32)]
+        [WithTestPatternImages(nameof(BitsPerPixel_Quality), 51, 7, PixelTypes.Rgba32)]
+        [WithSolidFilledImages(nameof(BitsPerPixel_Quality), 1, 1, 255, 100, 50, 255, PixelTypes.Rgba32)]
+        [WithTestPatternImages(nameof(BitsPerPixel_Quality), 7, 5, PixelTypes.Rgba32)]
+        public void EncodeBaseline_WorksWithDifferentSizes<TPixel>(TestImageProvider<TPixel> provider, JpegSubsample subsample, int quality)
+            where TPixel : struct, IPixel<TPixel> => TestJpegEncoderCore(provider, subsample, quality);
+
+        [Theory]
+        [WithTestPatternImages(nameof(BitsPerPixel_Quality), 48, 48, PixelTypes.Rgba32 | PixelTypes.Bgra32)]
+        public void EncodeBaseline_IsNotBoundToSinglePixelType<TPixel>(TestImageProvider<TPixel> provider, JpegSubsample subsample, int quality)
+            where TPixel : struct, IPixel<TPixel> => TestJpegEncoderCore(provider, subsample, quality);
+
+        /// <summary>
+        /// Anton's SUPER-SCIENTIFIC tolerance threshold calculation
+        /// </summary>
+        private static ImageComparer GetComparer(int quality, JpegSubsample subsample)
         {
-            JpegEncoderOptions options = new JpegEncoderOptions()
+            float tolerance = 0.015f; // ~1.5%
+
+            if (quality < 50)
             {
-                IgnoreMetadata = true
+                tolerance *= 10f;
+            }
+            else if (quality < 75 || subsample == JpegSubsample.Ratio420)
+            {
+                tolerance *= 5f;
+                if (subsample == JpegSubsample.Ratio420)
+                {
+                    tolerance *= 2f;
+                }
+            }
+
+            return ImageComparer.Tolerant(tolerance);
+        }
+
+        private static void TestJpegEncoderCore<TPixel>(
+            TestImageProvider<TPixel> provider,
+            JpegSubsample subsample,
+            int quality = 100)
+            where TPixel : struct, IPixel<TPixel>
+        {
+            using (Image<TPixel> image = provider.GetImage())
+            {
+                // There is no alpha in Jpeg!
+                image.Mutate(c => c.MakeOpaque());
+
+                var encoder = new JpegEncoder()
+                {
+                    Subsample = subsample,
+                    Quality = quality
+                };
+                string info = $"{subsample}-Q{quality}";
+                ImageComparer comparer = GetComparer(quality, subsample);
+
+                // Does DebugSave & load reference CompareToReferenceInput():
+                image.VerifyEncoder(provider, "jpeg", info, encoder, comparer, referenceImageExtension: "png");
+            }
+        }
+
+        [Fact]
+        public void Quality_0_And_1_Are_Identical()
+        {
+            var options = new JpegEncoder
+            {
+                Quality = 0
             };
 
-            TestFile testFile = TestFile.Create(TestImages.Jpeg.Baseline.Floorplan);
+            var testFile = TestFile.Create(TestImages.Jpeg.Baseline.Calliphora);
 
-            using (Image input = testFile.CreateImage())
+            using (Image<Rgba32> input = testFile.CreateImage())
+            using (var memStream0 = new MemoryStream())
+            using (var memStream1 = new MemoryStream())
             {
-                using (MemoryStream memStream = new MemoryStream())
+                input.SaveAsJpeg(memStream0, options);
+
+                options.Quality = 1;
+                input.SaveAsJpeg(memStream1, options);
+
+                Assert.Equal(memStream0.ToArray(), memStream1.ToArray());
+            }
+        }
+
+        [Fact]
+        public void Quality_0_And_100_Are_Not_Identical()
+        {
+            var options = new JpegEncoder
+            {
+                Quality = 0
+            };
+
+            var testFile = TestFile.Create(TestImages.Jpeg.Baseline.Calliphora);
+
+            using (Image<Rgba32> input = testFile.CreateImage())
+            using (var memStream0 = new MemoryStream())
+            using (var memStream1 = new MemoryStream())
+            {
+                input.SaveAsJpeg(memStream0, options);
+
+                options.Quality = 100;
+                input.SaveAsJpeg(memStream1, options);
+
+                Assert.NotEqual(memStream0.ToArray(), memStream1.ToArray());
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(RatioFiles))]
+        public void Encode_PreserveRatio(string imagePath, int xResolution, int yResolution, PixelResolutionUnit resolutionUnit)
+        {
+            var options = new JpegEncoder();
+
+            var testFile = TestFile.Create(imagePath);
+            using (Image<Rgba32> input = testFile.CreateImage())
+            {
+                using (var memStream = new MemoryStream())
                 {
-                    input.SaveAsJpeg(memStream, options);
+                    input.Save(memStream, options);
 
                     memStream.Position = 0;
-                    using (Image output = Image.Load(memStream))
+                    using (var output = Image.Load<Rgba32>(memStream))
                     {
-                        Assert.Null(output.MetaData.ExifProfile);
+                        ImageMetadata meta = output.Metadata;
+                        Assert.Equal(xResolution, meta.HorizontalResolution);
+                        Assert.Equal(yResolution, meta.VerticalResolution);
+                        Assert.Equal(resolutionUnit, meta.ResolutionUnits);
                     }
                 }
             }

@@ -1,90 +1,65 @@
-﻿// <copyright file="ColorConversionTests.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests.Drawing
+using System.Numerics;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.Shapes;
+using Xunit;
+
+namespace SixLabors.ImageSharp.Tests.Drawing
 {
-    using System.IO;
-    using System.Numerics;
-
-    using ImageSharp.PixelFormats;
-
-    using SixLabors.Shapes;
-
-    using Xunit;
-
-    public class SolidBezierTests : FileTestBase
+    [GroupOutput("Drawing")]
+    public class SolidBezierTests
     {
-        [Fact]
-        public void ImageShouldBeOverlayedByFilledPolygon()
+        [Theory]
+        [WithBlankImages(500, 500, PixelTypes.Rgba32)]
+        public void FilledBezier<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
         {
-            string path = this.CreateOutputDirectory("Drawing", "FilledBezier");
-            Vector2[] simplePath = new[] {
+            SixLabors.Primitives.PointF[] simplePath = {
                         new Vector2(10, 400),
                         new Vector2(30, 10),
                         new Vector2(240, 30),
                         new Vector2(300, 400)
             };
-            using (Image image = new Image(500, 500))
+
+            TPixel blue = NamedColors<TPixel>.Blue;
+            TPixel hotPink = NamedColors<TPixel>.HotPink;
+
+            using (Image<TPixel> image = provider.GetImage())
             {
-                using (FileStream output = File.OpenWrite($"{path}/Simple.png"))
-                {
-                    image
-                        .BackgroundColor(Rgba32.Blue)
-                        .Fill(Rgba32.HotPink, new Polygon(new BezierLineSegment(simplePath)))
-                        .Save(output);
-                }
 
-                using (PixelAccessor<Rgba32> sourcePixels = image.Lock())
-                {
-                    Assert.Equal(Rgba32.HotPink, sourcePixels[150, 300]);
-
-                    //curve points should not be never be set
-                    Assert.Equal(Rgba32.Blue, sourcePixels[240, 30]);
-
-                    // inside shape should not be empty
-                    Assert.Equal(Rgba32.HotPink, sourcePixels[200, 250]);
-                }
+                image.Mutate(x => x
+                    .BackgroundColor(blue)
+                    .Fill(hotPink, new Polygon(new CubicBezierLineSegment(simplePath))));
+                image.DebugSave(provider);
+                image.CompareToReferenceOutput(provider);
             }
         }
 
-        [Fact]
-        public void ImageShouldBeOverlayedByFilledPolygonOpacity()
+
+        [Theory]
+        [WithBlankImages(500, 500, PixelTypes.Rgba32)]
+        public void OverlayByFilledPolygonOpacity<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
         {
-            string path = this.CreateOutputDirectory("Drawing", "FilledBezier");
-            Vector2[] simplePath = new[] {
+            SixLabors.Primitives.PointF[] simplePath = {
                         new Vector2(10, 400),
                         new Vector2(30, 10),
                         new Vector2(240, 30),
                         new Vector2(300, 400)
             };
-            Rgba32 color = new Rgba32(Rgba32.HotPink.R, Rgba32.HotPink.G, Rgba32.HotPink.B, 150);
 
-            using (Image image = new Image(500, 500))
+            var color = new Rgba32(Rgba32.HotPink.R, Rgba32.HotPink.G, Rgba32.HotPink.B, 150);
+
+            using (var image = provider.GetImage() as Image<Rgba32>)
             {
-                using (FileStream output = File.OpenWrite($"{path}/Opacity.png"))
-                {
-                    image
-                        .BackgroundColor(Rgba32.Blue)
-                        .Fill(color, new Polygon(new BezierLineSegment(simplePath)))
-                        .Save(output);
-                }
-
-                //shift background color towards forground color by the opacity amount
-                Rgba32 mergedColor = new Rgba32(Vector4.Lerp(Rgba32.Blue.ToVector4(), Rgba32.HotPink.ToVector4(), 150f / 255f));
-
-                using (PixelAccessor<Rgba32> sourcePixels = image.Lock())
-                {
-                    //top of curve
-                    Assert.Equal(mergedColor, sourcePixels[138, 116]);
-
-                    //curve points should not be never be set
-                    Assert.Equal(Rgba32.Blue, sourcePixels[240, 30]);
-
-                    // inside shape should not be empty
-                    Assert.Equal(mergedColor, sourcePixels[200, 250]);
-                }
+                image.Mutate(x => x
+                    .BackgroundColor(Rgba32.Blue)
+                    .Fill(color, new Polygon(new CubicBezierLineSegment(simplePath))));
+                image.DebugSave(provider);
+                image.CompareToReferenceOutput(provider);
             }
         }
     }

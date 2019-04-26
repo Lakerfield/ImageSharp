@@ -1,13 +1,12 @@
-﻿// <copyright file="ColorConversionTests.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests
+using System;
+using SixLabors.ImageSharp.Metadata;
+using Xunit;
+
+namespace SixLabors.ImageSharp.Tests
 {
-    using System;
-    using Xunit;
-
     /// <summary>
     /// Tests the <see cref="ImageProperty"/> class.
     /// </summary>
@@ -19,13 +18,11 @@ namespace ImageSharp.Tests
         [Fact]
         public void AreEqual()
         {
-            ImageProperty property1 = new ImageProperty("Foo", "Bar");
-            ImageProperty property2 = new ImageProperty("Foo", "Bar");
-            ImageProperty property3 = null;
+            var property1 = new ImageProperty("Foo", "Bar");
+            var property2 = new ImageProperty("Foo", "Bar");
 
             Assert.Equal(property1, property2);
             Assert.True(property1 == property2);
-            Assert.Equal(property3, null);
         }
 
         /// <summary>
@@ -34,14 +31,12 @@ namespace ImageSharp.Tests
         [Fact]
         public void AreNotEqual()
         {
-            ImageProperty property1 = new ImageProperty("Foo", "Bar");
-            ImageProperty property2 = new ImageProperty("Foo", "Foo");
-            ImageProperty property3 = new ImageProperty("Bar", "Bar");
-            ImageProperty property4 = new ImageProperty("Foo", null);
+            var property1 = new ImageProperty("Foo", "Bar");
+            var property2 = new ImageProperty("Foo", "Foo");
+            var property3 = new ImageProperty("Bar", "Bar");
+            var property4 = new ImageProperty("Foo", null);
 
             Assert.False(property1.Equals("Foo"));
-
-            Assert.NotEqual(property1, null);
 
             Assert.NotEqual(property1, property2);
             Assert.True(property1 != property2);
@@ -67,9 +62,9 @@ namespace ImageSharp.Tests
         [Fact]
         public void ConstructorAssignsProperties()
         {
-            ImageProperty property = new ImageProperty("Foo", null);
+            var property = new ImageProperty("Foo", null);
             Assert.Equal("Foo", property.Name);
-            Assert.Equal(null, property.Value);
+            Assert.Null(property.Value);
 
             property = new ImageProperty("Foo", string.Empty);
             Assert.Equal(string.Empty, property.Value);

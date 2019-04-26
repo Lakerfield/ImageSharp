@@ -1,18 +1,19 @@
-﻿// <copyright file="ConvolutionProcessor.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Processing.Processors
+using System;
+using System.Numerics;
+using System.Runtime.InteropServices;
+using SixLabors.ImageSharp.Memory;
+using SixLabors.ImageSharp.ParallelUtils;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Primitives;
+using SixLabors.Primitives;
+
+namespace SixLabors.ImageSharp.Processing.Processors.Convolution
 {
-    using System;
-    using System.Numerics;
-    using System.Threading.Tasks;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
-    /// Defines a sampler that uses a 2 dimensional matrix to perform convolution against an image.
+    /// Defines a processor that uses a 2 dimensional matrix to perform convolution against an image.
     /// </summary>
     /// <typeparam name="TPixel">The pixel format.</typeparam>
     internal class ConvolutionProcessor<TPixel> : ImageProcessor<TPixel>
@@ -22,77 +23,96 @@ namespace ImageSharp.Processing.Processors
         /// Initializes a new instance of the <see cref="ConvolutionProcessor{TPixel}"/> class.
         /// </summary>
         /// <param name="kernelXY">The 2d gradient operator.</param>
-        public ConvolutionProcessor(Fast2DArray<float> kernelXY)
+        /// <param name="preserveAlpha">Whether the convolution filter is applied to alpha as well as the color channels.</param>
+        public ConvolutionProcessor(in DenseMatrix<float> kernelXY, bool preserveAlpha)
         {
             this.KernelXY = kernelXY;
+            this.PreserveAlpha = preserveAlpha;
         }
 
         /// <summary>
         /// Gets the 2d gradient operator.
         /// </summary>
-        public Fast2DArray<float> KernelXY { get; }
+        public DenseMatrix<float> KernelXY { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether the convolution filter is applied to alpha as well as the color channels.
+        /// </summary>
+        public bool PreserveAlpha { get; }
 
         /// <inheritdoc/>
-        protected override void OnApply(ImageBase<TPixel> source, Rectangle sourceRectangle)
+        protected override void OnFrameApply(ImageFrame<TPixel> source, Rectangle sourceRectangle, Configuration configuration)
         {
-            int kernelLength = this.KernelXY.Height;
-            int radius = kernelLength >> 1;
+            DenseMatrix<float> matrix = this.KernelXY;
+            bool preserveAlpha = this.PreserveAlpha;
 
-            int startY = sourceRectangle.Y;
-            int endY = sourceRectangle.Bottom;
-            int startX = sourceRectangle.X;
-            int endX = sourceRectangle.Right;
+            var interest = Rectangle.Intersect(sourceRectangle, source.Bounds());
+            int startY = interest.Y;
+            int endY = interest.Bottom;
+            int startX = interest.X;
+            int endX = interest.Right;
             int maxY = endY - 1;
             int maxX = endX - 1;
 
-            using (PixelAccessor<TPixel> targetPixels = new PixelAccessor<TPixel>(source.Width, source.Height))
-            using (PixelAccessor<TPixel> sourcePixels = source.Lock())
+            using (Buffer2D<TPixel> targetPixels = configuration.MemoryAllocator.Allocate2D<TPixel>(source.Size()))
             {
-                sourcePixels.CopyTo(targetPixels);
+                source.CopyTo(targetPixels);
 
-                Parallel.For(
-                 startY,
-                 endY,
-                 this.ParallelOptions,
-                 y =>
-                 {
-                     for (int x = startX; x < endX; x++)
-                     {
-                         float red = 0;
-                         float green = 0;
-                         float blue = 0;
+                var workingRectangle = Rectangle.FromLTRB(startX, startY, endX, endY);
+                int width = workingRectangle.Width;
 
-                         // Apply each matrix multiplier to the color components for each pixel.
-                         for (int fy = 0; fy < kernelLength; fy++)
-                         {
-                             int fyr = fy - radius;
-                             int offsetY = y + fyr;
+                ParallelHelper.IterateRowsWithTempBuffer<Vector4>(
+                    workingRectangle,
+                    configuration,
+                    (rows, vectorBuffer) =>
+                        {
+                            Span<Vector4> vectorSpan = vectorBuffer.Span;
+                            int length = vectorSpan.Length;
+                            ref Vector4 vectorSpanRef = ref MemoryMarshal.GetReference(vectorSpan);
 
-                             offsetY = offsetY.Clamp(0, maxY);
+                            for (int y = rows.Min; y < rows.Max; y++)
+                            {
+                                Span<TPixel> targetRowSpan = targetPixels.GetRowSpan(y).Slice(startX);
+                                PixelOperations<TPixel>.Instance.ToVector4(configuration, targetRowSpan.Slice(0, length), vectorSpan);
 
-                             for (int fx = 0; fx < kernelLength; fx++)
-                             {
-                                 int fxr = fx - radius;
-                                 int offsetX = x + fxr;
+                                if (preserveAlpha)
+                                {
+                                    for (int x = 0; x < width; x++)
+                                    {
+                                        DenseMatrixUtils.Convolve3(
+                                            in matrix,
+                                            source.PixelBuffer,
+                                            ref vectorSpanRef,
+                                            y,
+                                            x,
+                                            startY,
+                                            maxY,
+                                            startX,
+                                            maxX);
+                                    }
+                                }
+                                else
+                                {
+                                    for (int x = 0; x < width; x++)
+                                    {
+                                        DenseMatrixUtils.Convolve4(
+                                            in matrix,
+                                            source.PixelBuffer,
+                                            ref vectorSpanRef,
+                                            y,
+                                            x,
+                                            startY,
+                                            maxY,
+                                            startX,
+                                            maxX);
+                                    }
+                                }
 
-                                 offsetX = offsetX.Clamp(0, maxX);
+                                PixelOperations<TPixel>.Instance.FromVector4Destructive(configuration, vectorSpan, targetRowSpan);
+                            }
+                        });
 
-                                 Vector4 currentColor = sourcePixels[offsetX, offsetY].ToVector4();
-                                 currentColor *= this.KernelXY[fy, fx];
-
-                                 red += currentColor.X;
-                                 green += currentColor.Y;
-                                 blue += currentColor.Z;
-                             }
-                         }
-
-                         TPixel packed = default(TPixel);
-                         packed.PackFromVector4(new Vector4(red, green, blue, sourcePixels[x, y].ToVector4().W));
-                         targetPixels[x, y] = packed;
-                     }
-                 });
-
-                source.SwapPixelsBuffers(targetPixels);
+                Buffer2D<TPixel>.SwapOrCopyContent(source.PixelBuffer, targetPixels);
             }
         }
     }

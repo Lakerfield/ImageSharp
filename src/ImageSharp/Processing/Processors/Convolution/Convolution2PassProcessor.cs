@@ -1,18 +1,19 @@
-﻿// <copyright file="Convolution2PassProcessor.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Processing.Processors
+using System;
+using System.Numerics;
+using System.Runtime.InteropServices;
+using SixLabors.ImageSharp.Memory;
+using SixLabors.ImageSharp.ParallelUtils;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Primitives;
+using SixLabors.Primitives;
+
+namespace SixLabors.ImageSharp.Processing.Processors.Convolution
 {
-    using System;
-    using System.Numerics;
-    using System.Threading.Tasks;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
-    /// Defines a sampler that uses two one-dimensional matrices to perform two-pass convolution against an image.
+    /// Defines a processor that uses two one-dimensional matrices to perform two-pass convolution against an image.
     /// </summary>
     /// <typeparam name="TPixel">The pixel format.</typeparam>
     internal class Convolution2PassProcessor<TPixel> : ImageProcessor<TPixel>
@@ -23,38 +24,45 @@ namespace ImageSharp.Processing.Processors
         /// </summary>
         /// <param name="kernelX">The horizontal gradient operator.</param>
         /// <param name="kernelY">The vertical gradient operator.</param>
-        public Convolution2PassProcessor(Fast2DArray<float> kernelX, Fast2DArray<float> kernelY)
+        /// <param name="preserveAlpha">Whether the convolution filter is applied to alpha as well as the color channels.</param>
+        public Convolution2PassProcessor(
+            in DenseMatrix<float> kernelX,
+            in DenseMatrix<float> kernelY,
+            bool preserveAlpha)
         {
             this.KernelX = kernelX;
             this.KernelY = kernelY;
+            this.PreserveAlpha = preserveAlpha;
         }
 
         /// <summary>
         /// Gets the horizontal gradient operator.
         /// </summary>
-        public Fast2DArray<float> KernelX { get; }
+        public DenseMatrix<float> KernelX { get; }
 
         /// <summary>
         /// Gets the vertical gradient operator.
         /// </summary>
-        public Fast2DArray<float> KernelY { get; }
+        public DenseMatrix<float> KernelY { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether the convolution filter is applied to alpha as well as the color channels.
+        /// </summary>
+        public bool PreserveAlpha { get; }
 
         /// <inheritdoc/>
-        protected override void OnApply(ImageBase<TPixel> source, Rectangle sourceRectangle)
+        protected override void OnFrameApply(ImageFrame<TPixel> source, Rectangle sourceRectangle, Configuration configuration)
         {
-            int width = source.Width;
-            int height = source.Height;
-
-            using (PixelAccessor<TPixel> firstPassPixels = new PixelAccessor<TPixel>(width, height))
-            using (PixelAccessor<TPixel> sourcePixels = source.Lock())
+            using (Buffer2D<TPixel> firstPassPixels = configuration.MemoryAllocator.Allocate2D<TPixel>(source.Size()))
             {
-                this.ApplyConvolution(firstPassPixels, sourcePixels, source.Bounds, this.KernelX);
-                this.ApplyConvolution(sourcePixels, firstPassPixels, sourceRectangle, this.KernelY);
+                var interest = Rectangle.Intersect(sourceRectangle, source.Bounds());
+                this.ApplyConvolution(firstPassPixels, source.PixelBuffer, interest, this.KernelX, configuration);
+                this.ApplyConvolution(source.PixelBuffer, firstPassPixels, interest, this.KernelY, configuration);
             }
         }
 
         /// <summary>
-        /// Applies the process to the specified portion of the specified <see cref="ImageBase{TPixel}"/> at the specified location
+        /// Applies the process to the specified portion of the specified <see cref="ImageFrame{TPixel}"/> at the specified location
         /// and with the specified size.
         /// </summary>
         /// <param name="targetPixels">The target pixels to apply the process to.</param>
@@ -63,12 +71,16 @@ namespace ImageSharp.Processing.Processors
         /// The <see cref="Rectangle"/> structure that specifies the portion of the image object to draw.
         /// </param>
         /// <param name="kernel">The kernel operator.</param>
-        private void ApplyConvolution(PixelAccessor<TPixel> targetPixels, PixelAccessor<TPixel> sourcePixels, Rectangle sourceRectangle, Fast2DArray<float> kernel)
+        /// <param name="configuration">The <see cref="Configuration"/></param>
+        private void ApplyConvolution(
+            Buffer2D<TPixel> targetPixels,
+            Buffer2D<TPixel> sourcePixels,
+            Rectangle sourceRectangle,
+            in DenseMatrix<float> kernel,
+            Configuration configuration)
         {
-            int kernelHeight = kernel.Height;
-            int kernelWidth = kernel.Width;
-            int radiusY = kernelHeight >> 1;
-            int radiusX = kernelWidth >> 1;
+            DenseMatrix<float> matrix = kernel;
+            bool preserveAlpha = this.PreserveAlpha;
 
             int startY = sourceRectangle.Y;
             int endY = sourceRectangle.Bottom;
@@ -77,41 +89,59 @@ namespace ImageSharp.Processing.Processors
             int maxY = endY - 1;
             int maxX = endX - 1;
 
-            Parallel.For(
-                startY,
-                endY,
-                this.ParallelOptions,
-                y =>
-                {
-                    for (int x = startX; x < endX; x++)
+            var workingRectangle = Rectangle.FromLTRB(startX, startY, endX, endY);
+            int width = workingRectangle.Width;
+
+            ParallelHelper.IterateRowsWithTempBuffer<Vector4>(
+                workingRectangle,
+                configuration,
+                (rows, vectorBuffer) =>
                     {
-                        Vector4 destination = default(Vector4);
+                        Span<Vector4> vectorSpan = vectorBuffer.Span;
+                        int length = vectorSpan.Length;
+                        ref Vector4 vectorSpanRef = ref MemoryMarshal.GetReference(vectorSpan);
 
-                        // Apply each matrix multiplier to the color components for each pixel.
-                        for (int fy = 0; fy < kernelHeight; fy++)
+                        for (int y = rows.Min; y < rows.Max; y++)
                         {
-                            int fyr = fy - radiusY;
-                            int offsetY = y + fyr;
+                            Span<TPixel> targetRowSpan = targetPixels.GetRowSpan(y).Slice(startX);
+                            PixelOperations<TPixel>.Instance.ToVector4(configuration, targetRowSpan.Slice(0, length), vectorSpan);
 
-                            offsetY = offsetY.Clamp(0, maxY);
-
-                            for (int fx = 0; fx < kernelWidth; fx++)
+                            if (preserveAlpha)
                             {
-                                int fxr = fx - radiusX;
-                                int offsetX = x + fxr;
-
-                                offsetX = offsetX.Clamp(0, maxX);
-
-                                Vector4 currentColor = sourcePixels[offsetX, offsetY].ToVector4();
-                                destination += kernel[fy, fx] * currentColor;
+                                for (int x = 0; x < width; x++)
+                                {
+                                    DenseMatrixUtils.Convolve3(
+                                        in matrix,
+                                        sourcePixels,
+                                        ref vectorSpanRef,
+                                        y,
+                                        x,
+                                        startY,
+                                        maxY,
+                                        startX,
+                                        maxX);
+                                }
                             }
-                        }
+                            else
+                            {
+                                for (int x = 0; x < width; x++)
+                                {
+                                    DenseMatrixUtils.Convolve4(
+                                        in matrix,
+                                        sourcePixels,
+                                        ref vectorSpanRef,
+                                        y,
+                                        x,
+                                        startY,
+                                        maxY,
+                                        startX,
+                                        maxX);
+                                }
+                            }
 
-                        TPixel packed = default(TPixel);
-                        packed.PackFromVector4(destination);
-                        targetPixels[x, y] = packed;
-                    }
-                });
+                            PixelOperations<TPixel>.Instance.FromVector4Destructive(configuration, vectorSpan, targetRowSpan);
+                        }
+                    });
         }
     }
 }

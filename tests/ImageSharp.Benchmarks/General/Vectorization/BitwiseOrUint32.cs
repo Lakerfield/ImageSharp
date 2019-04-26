@@ -1,9 +1,9 @@
-namespace ImageSharp.Benchmarks.General.Vectorization
+using System.Numerics;
+
+using BenchmarkDotNet.Attributes;
+
+namespace SixLabors.ImageSharp.Benchmarks.General.Vectorization
 {
-    using System.Numerics;
-
-    using BenchmarkDotNet.Attributes;
-
     public class BitwiseOrUInt32
     {
         private uint[] input;
@@ -15,7 +15,7 @@ namespace ImageSharp.Benchmarks.General.Vectorization
 
         private uint testValue;
 
-        [Setup]
+        [GlobalSetup]
         public void Setup()
         {
             this.input = new uint[this.InputSize];

@@ -1,18 +1,17 @@
-﻿// <copyright file="IBmpEncoderOptions.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+namespace SixLabors.ImageSharp.Formats.Bmp
 {
     /// <summary>
-    /// Encapsulates the options for the <see cref="BmpEncoder"/>.
+    /// Configuration options for use during bmp encoding
     /// </summary>
-    public interface IBmpEncoderOptions : IEncoderOptions
+    /// <remarks>The encoder can currently only write 24-bit rgb images to streams.</remarks>
+    internal interface IBmpEncoderOptions
     {
         /// <summary>
         /// Gets the number of bits per pixel.
         /// </summary>
-        BmpBitsPerPixel BitsPerPixel { get; }
+        BmpBitsPerPixel? BitsPerPixel { get; }
     }
 }

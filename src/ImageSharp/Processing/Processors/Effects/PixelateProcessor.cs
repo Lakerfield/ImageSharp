@@ -1,18 +1,18 @@
-﻿// <copyright file="PixelateProcessor.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Processing.Processors
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.Common;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.Primitives;
+
+namespace SixLabors.ImageSharp.Processing.Processors.Effects
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Threading.Tasks;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
-    /// An <see cref="IImageProcessor{TPixel}"/> to pixelate the colors of an <see cref="Image{TPixel}"/>.
+    /// Applies a pixelation effect processing to the image.
     /// </summary>
     /// <typeparam name="TPixel">The pixel format.</typeparam>
     internal class PixelateProcessor<TPixel> : ImageProcessor<TPixel>
@@ -28,23 +28,28 @@ namespace ImageSharp.Processing.Processors
         public PixelateProcessor(int size)
         {
             Guard.MustBeGreaterThan(size, 0, nameof(size));
-            this.Value = size;
+            this.Size = size;
         }
 
         /// <summary>
         /// Gets or the pixel size.
         /// </summary>
-        public int Value { get; }
+        public int Size { get; }
 
         /// <inheritdoc/>
-        protected override void OnApply(ImageBase<TPixel> source, Rectangle sourceRectangle)
+        protected override void OnFrameApply(ImageFrame<TPixel> source, Rectangle sourceRectangle, Configuration configuration)
         {
+            if (this.Size <= 0 || this.Size > source.Height || this.Size > source.Width)
+            {
+                throw new ArgumentOutOfRangeException(nameof(this.Size));
+            }
+
             int startY = sourceRectangle.Y;
             int endY = sourceRectangle.Bottom;
             int startX = sourceRectangle.X;
             int endX = sourceRectangle.Right;
-            int size = this.Value;
-            int offset = this.Value / 2;
+            int size = this.Size;
+            int offset = this.Size / 2;
 
             // Align start/end positions.
             int minX = Math.Max(0, startX);
@@ -66,47 +71,45 @@ namespace ImageSharp.Processing.Processors
             // Get the range on the y-plane to choose from.
             IEnumerable<int> range = EnumerableExtensions.SteppedRange(minY, i => i < maxY, size);
 
-            using (PixelAccessor<TPixel> sourcePixels = source.Lock())
-            {
-                Parallel.ForEach(
-                    range,
-                    this.ParallelOptions,
-                    y =>
+            Parallel.ForEach(
+                range,
+                configuration.GetParallelOptions(),
+                y =>
+                    {
+                        int offsetY = y - startY;
+                        int offsetPy = offset;
+
+                        // Make sure that the offset is within the boundary of the image.
+                        while (offsetY + offsetPy >= maxY)
                         {
-                            int offsetY = y - startY;
-                            int offsetPy = offset;
+                            offsetPy--;
+                        }
 
-                            for (int x = minX; x < maxX; x += size)
+                        Span<TPixel> row = source.GetPixelRowSpan(offsetY + offsetPy);
+
+                        for (int x = minX; x < maxX; x += size)
+                        {
+                            int offsetX = x - startX;
+                            int offsetPx = offset;
+
+                            while (x + offsetPx >= maxX)
                             {
-                                int offsetX = x - startX;
-                                int offsetPx = offset;
+                                offsetPx--;
+                            }
 
-                                // Make sure that the offset is within the boundary of the image.
-                                while (offsetY + offsetPy >= maxY)
+                            // Get the pixel color in the centre of the soon to be pixelated area.
+                            TPixel pixel = row[offsetX + offsetPx];
+
+                            // For each pixel in the pixelate size, set it to the centre color.
+                            for (int l = offsetY; l < offsetY + size && l < maxY; l++)
+                            {
+                                for (int k = offsetX; k < offsetX + size && k < maxX; k++)
                                 {
-                                    offsetPy--;
-                                }
-
-                                while (x + offsetPx >= maxX)
-                                {
-                                    offsetPx--;
-                                }
-
-                                // Get the pixel color in the centre of the soon to be pixelated area.
-                                // ReSharper disable AccessToDisposedClosure
-                                TPixel pixel = sourcePixels[offsetX + offsetPx, offsetY + offsetPy];
-
-                                // For each pixel in the pixelate size, set it to the centre color.
-                                for (int l = offsetY; l < offsetY + size && l < maxY; l++)
-                                {
-                                    for (int k = offsetX; k < offsetX + size && k < maxX; k++)
-                                    {
-                                        sourcePixels[k, l] = pixel;
-                                    }
+                                    source[k, l] = pixel;
                                 }
                             }
-                        });
-            }
+                        }
+                    });
         }
     }
 }

@@ -1,13 +1,12 @@
-﻿// <copyright file="HuffmanSpec.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
-namespace ImageSharp.Formats.Jpg
+
+namespace SixLabors.ImageSharp.Formats.Jpeg.Components.Encoder
 {
     /// <summary>
     ///     The Huffman encoding specifications.
     /// </summary>
-    internal struct HuffmanSpec
+    internal readonly struct HuffmanSpec
     {
 #pragma warning disable SA1118 // ParameterMustNotSpanMultipleLines
 

@@ -1,36 +1,26 @@
-﻿// <copyright file="DrawText.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests.Drawing.Text
+using System.Numerics;
+using SixLabors.Fonts;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Processing.Processors.Text;
+using SixLabors.Primitives;
+using SixLabors.Shapes;
+using Xunit;
+
+namespace SixLabors.ImageSharp.Tests.Drawing.Text
 {
-    using System;
-    using System.Numerics;
-
-    using ImageSharp.Drawing;
-    using ImageSharp.Drawing.Brushes;
-    using ImageSharp.Drawing.Pens;
-    using ImageSharp.Drawing.Processors;
-    using ImageSharp.PixelFormats;
-    using ImageSharp.Tests.Drawing.Paths;
-
-    using SixLabors.Fonts;
-    using SixLabors.Shapes;
-
-    using Xunit;
-
-    public class DrawText : IDisposable
+    public class DrawText : BaseImageOperationsExtensionTest
     {
         Rgba32 color = Rgba32.HotPink;
 
-        SolidBrush brush = Brushes.Solid(Rgba32.HotPink);
+        SolidBrush<Rgba32> brush = Brushes.Solid(Rgba32.HotPink);
 
         IPath path = new SixLabors.Shapes.Path(
             new LinearLineSegment(
-                new Vector2[] { new Vector2(10, 10), new Vector2(20, 10), new Vector2(20, 10), new Vector2(30, 10), }));
-
-        private ProcessorWatchingImage img;
+                new SixLabors.Primitives.PointF[] { new Vector2(10, 10), new Vector2(20, 10), new Vector2(20, 10), new Vector2(30, 10), }));
 
         private readonly FontCollection FontCollection;
 
@@ -39,70 +29,53 @@ namespace ImageSharp.Tests.Drawing.Text
         public DrawText()
         {
             this.FontCollection = new FontCollection();
-            this.Font = this.FontCollection.Install(TestFontUtilities.GetPath("SixLaborsSampleAB.woff"));
-            this.img = new ProcessorWatchingImage(10, 10);
-        }
-
-        public void Dispose()
-        {
-            this.img.Dispose();
+            this.Font = this.FontCollection.Install(TestFontUtilities.GetPath("SixLaborsSampleAB.woff")).CreateFont(12);
         }
 
         [Fact]
         public void FillsForEachACharachterWhenBrushSetAndNotPen()
         {
-            this.img.DrawText(
+            this.operations.DrawText(
+                new TextGraphicsOptions(true),
                 "123",
                 this.Font,
                 Brushes.Solid(Rgba32.Red),
                 null,
-                Vector2.Zero,
-                new TextGraphicsOptions(true));
+                Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count); // 3 fills where applied
-            Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            this.Verify<DrawTextProcessor<Rgba32>>(0);
         }
 
         [Fact]
         public void FillsForEachACharachterWhenBrushSetAndNotPenDefaultOptions()
         {
-            this.img.DrawText("123", this.Font, Brushes.Solid(Rgba32.Red), null, Vector2.Zero);
+            this.operations.DrawText("123", this.Font, Brushes.Solid(Rgba32.Red), null, Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count); // 3 fills where applied
-            Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            this.Verify<DrawTextProcessor<Rgba32>>(0);
         }
 
         [Fact]
         public void FillsForEachACharachterWhenBrushSet()
         {
-            this.img.DrawText("123", this.Font, Brushes.Solid(Rgba32.Red), Vector2.Zero, new TextGraphicsOptions(true));
+            this.operations.DrawText(new TextGraphicsOptions(true), "123", this.Font, Brushes.Solid(Rgba32.Red), Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count); // 3 fills where applied
-            Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            this.Verify<DrawTextProcessor<Rgba32>>(0);
         }
 
         [Fact]
         public void FillsForEachACharachterWhenBrushSetDefaultOptions()
         {
-            this.img.DrawText("123", this.Font, Brushes.Solid(Rgba32.Red), Vector2.Zero);
+            this.operations.DrawText("123", this.Font, Brushes.Solid(Rgba32.Red), Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count); // 3 fills where applied
-            Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            this.Verify<DrawTextProcessor<Rgba32>>(0);
         }
 
         [Fact]
         public void FillsForEachACharachterWhenColorSet()
         {
-            this.img.DrawText("123", this.Font, Rgba32.Red, Vector2.Zero, new TextGraphicsOptions(true));
+            this.operations.DrawText(new TextGraphicsOptions(true), "123", this.Font, Rgba32.Red, Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count);
-            FillRegionProcessor<Rgba32> processor =
-                Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            var processor = this.Verify<DrawTextProcessor<Rgba32>>(0);
 
             SolidBrush<Rgba32> brush = Assert.IsType<SolidBrush<Rgba32>>(processor.Brush);
             Assert.Equal(Rgba32.Red, brush.Color);
@@ -111,13 +84,9 @@ namespace ImageSharp.Tests.Drawing.Text
         [Fact]
         public void FillsForEachACharachterWhenColorSetDefaultOptions()
         {
-            this.img.DrawText("123", this.Font, Rgba32.Red, Vector2.Zero);
+            this.operations.DrawText("123", this.Font, Rgba32.Red, Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count);
-            Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
-            FillRegionProcessor<Rgba32> processor =
-                Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            var processor = this.Verify<DrawTextProcessor<Rgba32>>(0);
 
             SolidBrush<Rgba32> brush = Assert.IsType<SolidBrush<Rgba32>>(processor.Brush);
             Assert.Equal(Rgba32.Red, brush.Color);
@@ -126,126 +95,69 @@ namespace ImageSharp.Tests.Drawing.Text
         [Fact]
         public void DrawForEachACharachterWhenPenSetAndNotBrush()
         {
-            this.img.DrawText(
+            this.operations.DrawText(
+                new TextGraphicsOptions(true),
                 "123",
                 this.Font,
                 null,
                 Pens.Dash(Rgba32.Red, 1),
-                Vector2.Zero,
-                new TextGraphicsOptions(true));
+                Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count); // 3 fills where applied
-            Assert.IsType<DrawPathProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            var processor = this.Verify<DrawTextProcessor<Rgba32>>(0);
         }
 
         [Fact]
         public void DrawForEachACharachterWhenPenSetAndNotBrushDefaultOptions()
         {
-            this.img.DrawText("123", this.Font, null, Pens.Dash(Rgba32.Red, 1), Vector2.Zero);
+            this.operations.DrawText("123", this.Font, null, Pens.Dash(Rgba32.Red, 1), Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count); // 3 fills where applied
-            Assert.IsType<DrawPathProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            var processor = this.Verify<DrawTextProcessor<Rgba32>>(0);
         }
 
         [Fact]
         public void DrawForEachACharachterWhenPenSet()
         {
-            this.img.DrawText("123", this.Font, Pens.Dash(Rgba32.Red, 1), Vector2.Zero, new TextGraphicsOptions(true));
+            this.operations.DrawText(new TextGraphicsOptions(true), "123", this.Font, Pens.Dash(Rgba32.Red, 1), Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count); // 3 fills where applied
-            Assert.IsType<DrawPathProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            var processor = this.Verify<DrawTextProcessor<Rgba32>>(0);
         }
 
         [Fact]
         public void DrawForEachACharachterWhenPenSetDefaultOptions()
         {
-            this.img.DrawText("123", this.Font, Pens.Dash(Rgba32.Red, 1), Vector2.Zero);
+            this.operations.DrawText("123", this.Font, Pens.Dash(Rgba32.Red, 1), Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(3, this.img.ProcessorApplications.Count); // 3 fills where applied
-            Assert.IsType<DrawPathProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
+            var processor = this.Verify<DrawTextProcessor<Rgba32>>(0);
+
+            Assert.Equal("123", processor.Text);
+            Assert.Equal(this.Font, processor.Font);
+            var penBrush = Assert.IsType<SolidBrush<Rgba32>>(processor.Pen.StrokeFill);
+            Assert.Equal(Rgba32.Red, penBrush.Color);
+            Assert.Equal(1, processor.Pen.StrokeWidth);
+            Assert.Equal(PointF.Empty, processor.Location);
         }
 
         [Fact]
         public void DrawForEachACharachterWhenPenSetAndFillFroEachWhenBrushSet()
         {
-            this.img.DrawText(
+            this.operations.DrawText(
+                new TextGraphicsOptions(true),
                 "123",
                 this.Font,
                 Brushes.Solid(Rgba32.Red),
                 Pens.Dash(Rgba32.Red, 1),
-                Vector2.Zero,
-                new TextGraphicsOptions(true));
+                Vector2.Zero);
 
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(6, this.img.ProcessorApplications.Count);
-        }
+            var processor = this.Verify<DrawTextProcessor<Rgba32>>(0);
 
-        [Fact]
-        public void DrawForEachACharachterWhenPenSetAndFillFroEachWhenBrushSetDefaultOptions()
-        {
-            this.img.DrawText("123", this.Font, Brushes.Solid(Rgba32.Red), Pens.Dash(Rgba32.Red, 1), Vector2.Zero);
-
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(6, this.img.ProcessorApplications.Count);
-        }
-
-        [Fact]
-        public void BrushAppliesBeforPen()
-        {
-            this.img.DrawText(
-                "1",
-                this.Font,
-                Brushes.Solid(Rgba32.Red),
-                Pens.Dash(Rgba32.Red, 1),
-                Vector2.Zero,
-                new TextGraphicsOptions(true));
-
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(2, this.img.ProcessorApplications.Count);
-            Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
-            Assert.IsType<DrawPathProcessor<Rgba32>>(this.img.ProcessorApplications[1].processor);
-        }
-
-        [Fact]
-        public void BrushAppliesBeforPenDefaultOptions()
-        {
-            this.img.DrawText("1", this.Font, Brushes.Solid(Rgba32.Red), Pens.Dash(Rgba32.Red, 1), Vector2.Zero);
-
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(2, this.img.ProcessorApplications.Count);
-            Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
-            Assert.IsType<DrawPathProcessor<Rgba32>>(this.img.ProcessorApplications[1].processor);
-        }
-
-        [Fact]
-        public void GlyphHeightChangesBasedOnuseImageResolutionFlag()
-        {
-            this.img.MetaData.VerticalResolution = 1;
-            this.img.MetaData.HorizontalResolution = 1;
-            this.img.DrawText("1", this.Font, Brushes.Solid(Rgba32.Red), Vector2.Zero, new TextGraphicsOptions(true) {
-                UseImageResolution = false
-            });
-
-            this.img.DrawText("1", this.Font, Brushes.Solid(Rgba32.Red), Vector2.Zero, new TextGraphicsOptions(true)
-            {
-                UseImageResolution = true
-            });
-
-            Assert.NotEmpty(this.img.ProcessorApplications);
-            Assert.Equal(2, this.img.ProcessorApplications.Count);
-            FillRegionProcessor<Rgba32> ownResolution = Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[0].processor);
-            FillRegionProcessor<Rgba32> imgResolution = Assert.IsType<FillRegionProcessor<Rgba32>>(this.img.ProcessorApplications[1].processor);
-
-            ShapeRegion ownRegion = Assert.IsType<ShapeRegion>(ownResolution.Region);
-            ShapeRegion imgRegion = Assert.IsType<ShapeRegion>(imgResolution.Region);
-
-            // magic numbers based on the font used at well known resolutions
-            Assert.Equal(7.44, ownRegion.Shape.Bounds.Height, 2);
-            Assert.Equal(0.1, imgRegion.Shape.Bounds.Height, 2);
+            Assert.Equal("123", processor.Text);
+            Assert.Equal(this.Font, processor.Font);
+            var brush = Assert.IsType<SolidBrush<Rgba32>>(processor.Brush);
+            Assert.Equal(Rgba32.Red, brush.Color);
+            Assert.Equal(PointF.Empty, processor.Location);
+            var penBrush = Assert.IsType<SolidBrush<Rgba32>>(processor.Pen.StrokeFill);
+            Assert.Equal(Rgba32.Red, penBrush.Color);
+            Assert.Equal(1, processor.Pen.StrokeWidth);
         }
     }
 }

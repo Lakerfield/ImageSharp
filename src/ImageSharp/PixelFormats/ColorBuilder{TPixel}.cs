@@ -1,13 +1,12 @@
-﻿// <copyright file="ColorBuilder{TPixel}.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.PixelFormats
+using System;
+using System.Buffers.Binary;
+using System.Globalization;
+
+namespace SixLabors.ImageSharp.PixelFormats
 {
-    using System;
-    using System.Globalization;
-
     /// <summary>
     /// A set of named colors mapped to the provided Color space.
     /// </summary>
@@ -22,25 +21,22 @@ namespace ImageSharp.PixelFormats
         /// The hexadecimal representation of the combined color components arranged
         /// in rgb, rgba, rrggbb, or rrggbbaa format to match web syntax.
         /// </param>
-        /// <returns>Returns a <typeparamref name="TPixel"/> that represents the color defined by the provided RGBA heax string.</returns>
+        /// <returns>Returns a <typeparamref name="TPixel"/> that represents the color defined by the provided RGBA hex string.</returns>
         public static TPixel FromHex(string hex)
         {
-            Guard.NotNullOrEmpty(hex, nameof(hex));
+            Guard.NotNullOrWhiteSpace(hex, nameof(hex));
 
             hex = ToRgbaHex(hex);
-            uint packedValue;
-            if (hex == null || !uint.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out packedValue))
+
+            if (hex is null || !uint.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint packedValue))
             {
                 throw new ArgumentException("Hexadecimal string is not in the correct format.", nameof(hex));
             }
 
-            TPixel result = default(TPixel);
+            TPixel result = default;
+            var rgba = new Rgba32(BinaryPrimitives.ReverseEndianness(packedValue));
 
-            result.PackFromBytes(
-                (byte)(packedValue >> 24),
-                (byte)(packedValue >> 16),
-                (byte)(packedValue >> 8),
-                (byte)(packedValue >> 0));
+            result.FromRgba32(rgba);
             return result;
         }
 
@@ -51,12 +47,7 @@ namespace ImageSharp.PixelFormats
         /// <param name="green">The green intensity.</param>
         /// <param name="blue">The blue intensity.</param>
         /// <returns>Returns a <typeparamref name="TPixel"/> that represents the color defined by the provided RGB values with 100% opacity.</returns>
-        public static TPixel FromRGB(byte red, byte green, byte blue)
-        {
-            TPixel color = default(TPixel);
-            color.PackFromBytes(red, green, blue, 255);
-            return color;
-        }
+        public static TPixel FromRGB(byte red, byte green, byte blue) => FromRGBA(red, green, blue, 255);
 
         /// <summary>
         /// Creates a new <typeparamref name="TPixel"/> representation from standard RGBA bytes.
@@ -68,8 +59,8 @@ namespace ImageSharp.PixelFormats
         /// <returns>Returns a <typeparamref name="TPixel"/> that represents the color defined by the provided RGBA values.</returns>
         public static TPixel FromRGBA(byte red, byte green, byte blue, byte alpha)
         {
-            TPixel color = default(TPixel);
-            color.PackFromBytes(red, green, blue, alpha);
+            TPixel color = default;
+            color.FromRgba32(new Rgba32(red, green, blue, alpha));
             return color;
         }
 
@@ -82,7 +73,10 @@ namespace ImageSharp.PixelFormats
         /// </returns>
         private static string ToRgbaHex(string hex)
         {
-            hex = hex.StartsWith("#") ? hex.Substring(1) : hex;
+            if (hex[0] == '#')
+            {
+                hex = hex.Substring(1);
+            }
 
             if (hex.Length == 8)
             {
@@ -99,12 +93,12 @@ namespace ImageSharp.PixelFormats
                 return null;
             }
 
-            string red = char.ToString(hex[0]);
-            string green = char.ToString(hex[1]);
-            string blue = char.ToString(hex[2]);
-            string alpha = hex.Length == 3 ? "F" : char.ToString(hex[3]);
+            char r = hex[0];
+            char g = hex[1];
+            char b = hex[2];
+            char a = hex.Length == 3 ? 'F' : hex[3];
 
-            return string.Concat(red, red, green, green, blue, blue, alpha, alpha);
+            return new string(new[] { r, r, g, g, b, b, a, a });
         }
     }
 }

@@ -1,22 +1,20 @@
-﻿// <copyright file="ExifReaderTests.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests
+using System.Collections.Generic;
+using SixLabors.ImageSharp.Metadata.Profiles.Exif;
+using Xunit;
+
+namespace SixLabors.ImageSharp.Tests
 {
-    using System.Collections.ObjectModel;
-    using Xunit;
-
     public class ExifReaderTests
     {
         [Fact]
         public void Read_DataIsEmpty_ReturnsEmptyCollection()
         {
-            ExifReader reader = new ExifReader();
-            byte[] data = new byte[] { };
+            var reader = new ExifReader(new byte[] { });
 
-            Collection<ExifValue> result = reader.Read(data);
+            IList<ExifValue> result = reader.ReadValues();
 
             Assert.Equal(0, result.Count);
         }
@@ -24,10 +22,9 @@ namespace ImageSharp.Tests
         [Fact]
         public void Read_DataIsMinimal_ReturnsEmptyCollection()
         {
-            ExifReader reader = new ExifReader();
-            byte[] data = new byte[] { 69, 120, 105, 102, 0, 0 };
+            var reader = new ExifReader(new byte[] { 69, 120, 105, 102, 0, 0 });
 
-            Collection<ExifValue> result = reader.Read(data);
+            IList<ExifValue> result = reader.ReadValues();
 
             Assert.Equal(0, result.Count);
         }

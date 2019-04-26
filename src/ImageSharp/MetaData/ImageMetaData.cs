@@ -1,106 +1,103 @@
-﻿// <copyright file="ImageMetaData.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp
+using System.Collections.Generic;
+using SixLabors.ImageSharp.Formats;
+using SixLabors.ImageSharp.Metadata.Profiles.Exif;
+using SixLabors.ImageSharp.Metadata.Profiles.Icc;
+
+namespace SixLabors.ImageSharp.Metadata
 {
-    using System;
-    using System.Collections.Generic;
-
     /// <summary>
     /// Encapsulates the metadata of an image.
     /// </summary>
-    public sealed class ImageMetaData : IMetaData
+    public sealed class ImageMetadata : IDeepCloneable<ImageMetadata>
     {
         /// <summary>
         /// The default horizontal resolution value (dots per inch) in x direction.
-        /// <remarks>The default value is 96 dots per inch.</remarks>
+        /// <remarks>The default value is 96 <see cref="PixelResolutionUnit.PixelsPerInch"/>.</remarks>
         /// </summary>
         public const double DefaultHorizontalResolution = 96;
 
         /// <summary>
         /// The default vertical resolution value (dots per inch) in y direction.
-        /// <remarks>The default value is 96 dots per inch.</remarks>
+        /// <remarks>The default value is 96 <see cref="PixelResolutionUnit.PixelsPerInch"/>.</remarks>
         /// </summary>
         public const double DefaultVerticalResolution = 96;
 
+        /// <summary>
+        /// The default pixel resolution units.
+        /// <remarks>The default value is <see cref="PixelResolutionUnit.PixelsPerInch"/>.</remarks>
+        /// </summary>
+        public const PixelResolutionUnit DefaultPixelResolutionUnits = PixelResolutionUnit.PixelsPerInch;
+
+        private readonly Dictionary<IImageFormat, IDeepCloneable> formatMetadata = new Dictionary<IImageFormat, IDeepCloneable>();
         private double horizontalResolution;
         private double verticalResolution;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ImageMetaData"/> class.
+        /// Initializes a new instance of the <see cref="ImageMetadata"/> class.
         /// </summary>
-        internal ImageMetaData()
+        internal ImageMetadata()
         {
             this.horizontalResolution = DefaultHorizontalResolution;
             this.verticalResolution = DefaultVerticalResolution;
+            this.ResolutionUnits = DefaultPixelResolutionUnits;
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ImageMetaData"/> class
+        /// Initializes a new instance of the <see cref="ImageMetadata"/> class
         /// by making a copy from other metadata.
         /// </summary>
         /// <param name="other">
-        /// The other <see cref="ImageMetaData"/> to create this instance from.
+        /// The other <see cref="ImageMetadata"/> to create this instance from.
         /// </param>
-        internal ImageMetaData(ImageMetaData other)
+        private ImageMetadata(ImageMetadata other)
         {
-            DebugGuard.NotNull(other, nameof(other));
-
             this.HorizontalResolution = other.HorizontalResolution;
             this.VerticalResolution = other.VerticalResolution;
-            this.Quality = other.Quality;
-            this.FrameDelay = other.FrameDelay;
-            this.RepeatCount = other.RepeatCount;
+            this.ResolutionUnits = other.ResolutionUnits;
+
+            foreach (KeyValuePair<IImageFormat, IDeepCloneable> meta in other.formatMetadata)
+            {
+                this.formatMetadata.Add(meta.Key, meta.Value.DeepClone());
+            }
 
             foreach (ImageProperty property in other.Properties)
             {
-                this.Properties.Add(new ImageProperty(property));
+                this.Properties.Add(property);
             }
 
-            if (other.ExifProfile != null)
-            {
-                this.ExifProfile = new ExifProfile(other.ExifProfile);
-            }
-            else
-            {
-                this.ExifProfile = null;
-            }
+            this.ExifProfile = other.ExifProfile?.DeepClone();
+            this.IccProfile = other.IccProfile?.DeepClone();
         }
 
         /// <summary>
-        /// Gets or sets the resolution of the image in x- direction. It is defined as
-        ///  number of dots per inch and should be an positive value.
+        /// Gets or sets the resolution of the image in x- direction.
+        /// It is defined as the number of dots per inch and should be an positive value.
         /// </summary>
         /// <value>The density of the image in x- direction.</value>
         public double HorizontalResolution
         {
-            get
-            {
-                return this.horizontalResolution;
-            }
+            get => this.horizontalResolution;
 
             set
             {
-              if (value > 0)
-              {
-                  this.horizontalResolution = value;
-              }
+                if (value > 0)
+                {
+                    this.horizontalResolution = value;
+                }
             }
         }
 
         /// <summary>
-        /// Gets or sets the resolution of the image in y- direction. It is defined as
-        /// number of dots per inch and should be an positive value.
+        /// Gets or sets the resolution of the image in y- direction.
+        /// It is defined as the number of dots per inch and should be an positive value.
         /// </summary>
         /// <value>The density of the image in y- direction.</value>
         public double VerticalResolution
         {
-            get
-            {
-                return this.verticalResolution;
-            }
+            get => this.verticalResolution;
 
             set
             {
@@ -112,41 +109,79 @@ namespace ImageSharp
         }
 
         /// <summary>
+        /// Gets or sets unit of measure used when reporting resolution.
+        ///  00 : No units; width:height pixel aspect ratio = Ydensity:Xdensity
+        ///  01 : Pixels per inch (2.54 cm)
+        ///  02 : Pixels per centimeter
+        ///  03 : Pixels per meter
+        /// </summary>
+        public PixelResolutionUnit ResolutionUnits { get; set; }
+
+        /// <summary>
         /// Gets or sets the Exif profile.
         /// </summary>
         public ExifProfile ExifProfile { get; set; }
 
         /// <summary>
-        /// Gets or sets the frame delay for animated images.
-        /// If not 0, this field specifies the number of hundredths (1/100) of a second to
-        /// wait before continuing with the processing of the Data Stream.
-        /// The clock starts ticking immediately after the graphic is rendered.
+        /// Gets or sets the list of ICC profiles.
         /// </summary>
-        public int FrameDelay { get; set; }
+        public IccProfile IccProfile { get; set; }
 
         /// <summary>
         /// Gets the list of properties for storing meta information about this image.
         /// </summary>
-        /// <value>A list of image properties.</value>
         public IList<ImageProperty> Properties { get; } = new List<ImageProperty>();
 
         /// <summary>
-        /// Gets or sets the quality of the image. This affects the output quality of lossy image formats.
+        /// Gets the metadata value associated with the specified key.
         /// </summary>
-        public int Quality { get; set; }
-
-        /// <summary>
-        /// Gets or sets the number of times any animation is repeated.
-        /// <remarks>0 means to repeat indefinitely.</remarks>
-        /// </summary>
-        public ushort RepeatCount { get; set; }
-
-        /// <summary>
-        /// Synchronizes the profiles with the current meta data.
-        /// </summary>
-        internal void SyncProfiles()
+        /// <typeparam name="TFormatMetadata">The type of metadata.</typeparam>
+        /// <param name="key">The key of the value to get.</param>
+        /// <returns>
+        /// The <typeparamref name="TFormatMetadata"/>.
+        /// </returns>
+        public TFormatMetadata GetFormatMetadata<TFormatMetadata>(IImageFormat<TFormatMetadata> key)
+             where TFormatMetadata : class, IDeepCloneable
         {
-            this.ExifProfile?.Sync(this);
+            if (this.formatMetadata.TryGetValue(key, out IDeepCloneable meta))
+            {
+                return (TFormatMetadata)meta;
+            }
+
+            TFormatMetadata newMeta = key.CreateDefaultFormatMetadata();
+            this.formatMetadata[key] = newMeta;
+            return newMeta;
         }
+
+        /// <inheritdoc/>
+        public ImageMetadata DeepClone() => new ImageMetadata(this);
+
+        /// <summary>
+        /// Looks up a property with the provided name.
+        /// </summary>
+        /// <param name="name">The name of the property to lookup.</param>
+        /// <param name="result">The property, if found, with the provided name.</param>
+        /// <returns>Whether the property was found.</returns>
+        internal bool TryGetProperty(string name, out ImageProperty result)
+        {
+            foreach (ImageProperty property in this.Properties)
+            {
+                if (property.Name == name)
+                {
+                    result = property;
+
+                    return true;
+                }
+            }
+
+            result = default;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Synchronizes the profiles with the current metadata.
+        /// </summary>
+        internal void SyncProfiles() => this.ExifProfile?.Sync(this);
     }
 }

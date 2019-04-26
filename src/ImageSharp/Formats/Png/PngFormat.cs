@@ -1,47 +1,37 @@
-﻿// <copyright file="PngFormat.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System.Collections.Generic;
+
+namespace SixLabors.ImageSharp.Formats.Png
 {
-    using System.Collections.Generic;
-
     /// <summary>
-    /// Encapsulates the means to encode and decode png images.
+    /// Registers the image encoders, decoders and mime type detectors for the png format.
     /// </summary>
-    public class PngFormat : IImageFormat
+    public sealed class PngFormat : IImageFormat<PngMetadata>
     {
-        /// <inheritdoc/>
-        public string MimeType => "image/png";
-
-        /// <inheritdoc/>
-        public string Extension => "png";
-
-        /// <inheritdoc/>
-        public IEnumerable<string> SupportedExtensions => new string[] { "png" };
-
-        /// <inheritdoc/>
-        public IImageDecoder Decoder => new PngDecoder();
-
-        /// <inheritdoc/>
-        public IImageEncoder Encoder => new PngEncoder();
-
-        /// <inheritdoc/>
-        public int HeaderSize => 8;
-
-        /// <inheritdoc/>
-        public bool IsSupportedFileFormat(byte[] header)
+        private PngFormat()
         {
-            return header.Length >= this.HeaderSize &&
-                   header[0] == 0x89 &&
-                   header[1] == 0x50 && // P
-                   header[2] == 0x4E && // N
-                   header[3] == 0x47 && // G
-                   header[4] == 0x0D && // CR
-                   header[5] == 0x0A && // LF
-                   header[6] == 0x1A && // EOF
-                   header[7] == 0x0A;   // LF
         }
+
+        /// <summary>
+        /// Gets the current instance.
+        /// </summary>
+        public static PngFormat Instance { get; } = new PngFormat();
+
+        /// <inheritdoc/>
+        public string Name => "PNG";
+
+        /// <inheritdoc/>
+        public string DefaultMimeType => "image/png";
+
+        /// <inheritdoc/>
+        public IEnumerable<string> MimeTypes => PngConstants.MimeTypes;
+
+        /// <inheritdoc/>
+        public IEnumerable<string> FileExtensions => PngConstants.FileExtensions;
+
+        /// <inheritdoc/>
+        public PngMetadata CreateDefaultFormatMetadata() => new PngMetadata();
     }
 }

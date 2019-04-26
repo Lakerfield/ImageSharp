@@ -1,16 +1,13 @@
-﻿// <copyright file="LittleEndianBitConverterTests.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests.IO
+using System;
+using System.IO;
+using SixLabors.ImageSharp.IO;
+using Xunit;
+
+namespace SixLabors.ImageSharp.Tests.IO
 {
-    using System;
-    using System.IO;
-    using ImageSharp.IO;
-
-    using Xunit;
-
     public class LocalFileSystemTests
     {
         [Fact]
@@ -20,9 +17,9 @@ namespace ImageSharp.Tests.IO
             string testData = Guid.NewGuid().ToString();
             File.WriteAllText(path, testData);
 
-            LocalFileSystem fs = new LocalFileSystem();
+            var fs = new LocalFileSystem();
 
-            using (StreamReader r = new StreamReader(fs.OpenRead(path)))
+            using (var r = new StreamReader(fs.OpenRead(path)))
             {
                 string data = r.ReadToEnd();
 
@@ -37,9 +34,9 @@ namespace ImageSharp.Tests.IO
         {
             string path = Path.GetTempFileName();
             string testData = Guid.NewGuid().ToString();
-            LocalFileSystem fs = new LocalFileSystem();
+            var fs = new LocalFileSystem();
 
-            using (StreamWriter r = new StreamWriter(fs.Create(path)))
+            using (var r = new StreamWriter(fs.Create(path)))
             {
                 r.Write(testData);
             }

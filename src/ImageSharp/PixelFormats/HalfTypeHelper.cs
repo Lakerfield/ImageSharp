@@ -1,17 +1,15 @@
-﻿// <copyright file="HalfTypeHelper.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.PixelFormats
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+namespace SixLabors.ImageSharp.PixelFormats
 {
-    using System.Runtime.CompilerServices;
-    using System.Runtime.InteropServices;
-
     /// <summary>
     /// Helper methods for packing and unpacking floating point values
     /// </summary>
-    internal class HalfTypeHelper
+    internal static class HalfTypeHelper
     {
         /// <summary>
         /// Packs a <see cref="float"/> into an <see cref="ushort"/>
@@ -21,7 +19,7 @@ namespace ImageSharp.PixelFormats
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static ushort Pack(float value)
         {
-            Uif uif = new Uif { F = value };
+            var uif = new Uif { F = value };
             return Pack(uif.I);
         }
 
@@ -43,7 +41,7 @@ namespace ImageSharp.PixelFormats
                     return (ushort)s;
                 }
 
-                m = m | 0x00800000;
+                m |= 0x00800000;
 
                 int t = 14 - e;
                 int a = (1 << (t - 1)) - 1;
@@ -70,7 +68,7 @@ namespace ImageSharp.PixelFormats
             if ((m & 0x00800000) != 0)
             {
                 m = 0;
-                e += 1;
+                e++;
             }
 
             if (e > 30)
@@ -99,11 +97,11 @@ namespace ImageSharp.PixelFormats
                     while ((mantissa & 1024) == 0)
                     {
                         exponent--;
-                        mantissa = mantissa << 1;
+                        mantissa <<= 1;
                     }
 
                     mantissa &= 0xfffffbff;
-                    result = ((uint)((((uint)value & 0x8000) << 16) | ((exponent + 127) << 23))) | (mantissa << 13);
+                    result = (((uint)value & 0x8000) << 16) | ((exponent + 127) << 23) | (mantissa << 13);
                 }
                 else
                 {
@@ -112,10 +110,10 @@ namespace ImageSharp.PixelFormats
             }
             else
             {
-                result = ((((uint)value & 0x8000) << 16) | ((((((uint)value >> 10) & 0x1f) - 15) + 127) << 23)) | (mantissa << 13);
+                result = (((uint)value & 0x8000) << 16) | ((((((uint)value >> 10) & 0x1f) - 15) + 127) << 23) | (mantissa << 13);
             }
 
-            Uif uif = new Uif { U = result };
+            var uif = new Uif { U = result };
             return uif.F;
         }
 

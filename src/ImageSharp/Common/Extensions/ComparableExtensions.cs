@@ -1,13 +1,11 @@
-﻿// <copyright file="ComparableExtensions.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp
+using System;
+using System.Runtime.CompilerServices;
+
+namespace SixLabors.ImageSharp
 {
-    using System;
-    using System.Runtime.CompilerServices;
-
     /// <summary>
     /// Extension methods for classes that implement <see cref="IComparable{T}"/>.
     /// </summary>
@@ -22,7 +20,7 @@ namespace ImageSharp
         /// <returns>
         /// The <see cref="byte"/> representing the clamped value.
         /// </returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(InliningOptions.ShortMethod)]
         public static byte Clamp(this byte value, byte min, byte max)
         {
             // Order is important here as someone might set min to higher than max.
@@ -48,7 +46,7 @@ namespace ImageSharp
         /// <returns>
         /// The <see cref="int"/> representing the clamped value.
         /// </returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(InliningOptions.ShortMethod)]
         public static uint Clamp(this uint value, uint min, uint max)
         {
             if (value >= max)
@@ -73,7 +71,7 @@ namespace ImageSharp
         /// <returns>
         /// The <see cref="int"/> representing the clamped value.
         /// </returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(InliningOptions.ShortMethod)]
         public static int Clamp(this int value, int min, int max)
         {
             if (value >= max)
@@ -98,7 +96,7 @@ namespace ImageSharp
         /// <returns>
         /// The <see cref="float"/> representing the clamped value.
         /// </returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(InliningOptions.ShortMethod)]
         public static float Clamp(this float value, float min, float max)
         {
             if (value >= max)
@@ -123,7 +121,7 @@ namespace ImageSharp
         /// <returns>
         /// The <see cref="double"/> representing the clamped value.
         /// </returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(InliningOptions.ShortMethod)]
         public static double Clamp(this double value, double min, double max)
         {
             if (value >= max)
@@ -137,53 +135,6 @@ namespace ImageSharp
             }
 
             return value;
-        }
-
-        /// <summary>
-        /// Converts an <see cref="int"/> to a <see cref="byte"/> first restricting the value between the
-        /// minimum and maximum allowable ranges.
-        /// </summary>
-        /// <param name="value">The <see cref="int"/> this method extends.</param>
-        /// <returns>The <see cref="byte"/></returns>
-        public static byte ToByte(this int value)
-        {
-            return (byte)value.Clamp(0, 255);
-        }
-
-        /// <summary>
-        /// Converts an <see cref="float"/> to a <see cref="byte"/> first restricting the value between the
-        /// minimum and maximum allowable ranges.
-        /// </summary>
-        /// <param name="value">The <see cref="float"/> this method extends.</param>
-        /// <returns>The <see cref="byte"/></returns>
-        public static byte ToByte(this float value)
-        {
-            return (byte)value.Clamp(0, 255);
-        }
-
-        /// <summary>
-        /// Converts an <see cref="double"/> to a <see cref="byte"/> first restricting the value between the
-        /// minimum and maximum allowable ranges.
-        /// </summary>
-        /// <param name="value">The <see cref="double"/> this method extends.</param>
-        /// <returns>The <see cref="byte"/></returns>
-        public static byte ToByte(this double value)
-        {
-            return (byte)value.Clamp(0, 255);
-        }
-
-        /// <summary>
-        /// Swaps the references to two objects in memory.
-        /// </summary>
-        /// <param name="first">The first reference.</param>
-        /// <param name="second">The second reference.</param>
-        /// <typeparam name="T">The type of object.</typeparam>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Swap<T>(ref T first, ref T second)
-        {
-            T temp = second;
-            second = first;
-            first = temp;
         }
     }
 }

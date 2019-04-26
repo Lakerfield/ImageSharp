@@ -3,13 +3,15 @@
 // Licensed under the Apache License, Version 2.0.
 // </copyright>
 
-namespace ImageSharp.Sandbox46
+using SixLabors.ImageSharp.Tests.PixelFormats.PixelOperations;
+using SixLabors.ImageSharp.Tests.ProfilingBenchmarks;
+
+namespace SixLabors.ImageSharp.Sandbox46
 {
     using System;
-    using System.Runtime.DesignerServices;
-
-    using ImageSharp.Tests;
-    using ImageSharp.Tests.Colors;
+    using SixLabors.ImageSharp.Tests.Formats.Jpg;
+    using SixLabors.ImageSharp.Tests.PixelFormats;
+    using SixLabors.ImageSharp.Tests.Processing.Processors.Transforms;
 
     using Xunit.Abstractions;
 
@@ -17,15 +19,9 @@ namespace ImageSharp.Sandbox46
     {
         private class ConsoleOutput : ITestOutputHelper
         {
-            public void WriteLine(string message)
-            {
-                Console.WriteLine(message);
-            }
+            public void WriteLine(string message) => Console.WriteLine(message);
 
-            public void WriteLine(string format, params object[] args)
-            {
-                Console.WriteLine(format, args);
-            }
+            public void WriteLine(string format, params object[] args) => Console.WriteLine(format, args);
         }
 
         /// <summary>
@@ -37,30 +33,37 @@ namespace ImageSharp.Sandbox46
         /// </param>
         public static void Main(string[] args)
         {
+            // RunJpegColorProfilingTests();
+
             // RunDecodeJpegProfilingTests();
             // RunToVector4ProfilingTest();
-
             RunResizeProfilingTest();
 
             Console.ReadLine();
         }
 
+        private static void RunJpegColorProfilingTests()
+        {
+            new JpegColorConverterTests(new ConsoleOutput()).BenchmarkYCbCr(false);
+            new JpegColorConverterTests(new ConsoleOutput()).BenchmarkYCbCr(true);
+        }
+
         private static void RunResizeProfilingTest()
         {
-            ResizeProfilingBenchmarks test = new ResizeProfilingBenchmarks(new ConsoleOutput());
-            test.ResizeBicubic(2000, 2000);
+            var test = new ResizeProfilingBenchmarks(new ConsoleOutput());
+            test.ResizeBicubic(4000, 4000);
         }
 
         private static void RunToVector4ProfilingTest()
         {
-            BulkPixelOperationsTests.Color32 tests = new BulkPixelOperationsTests.Color32(new ConsoleOutput());
+            var tests = new PixelOperationsTests.Rgba32OperationsTests(new ConsoleOutput());
             tests.Benchmark_ToVector4();
         }
 
         private static void RunDecodeJpegProfilingTests()
         {
             Console.WriteLine("RunDecodeJpegProfilingTests...");
-            JpegProfilingBenchmarks benchmarks = new JpegProfilingBenchmarks(new ConsoleOutput());
+            var benchmarks = new JpegProfilingBenchmarks(new ConsoleOutput());
             foreach (object[] data in JpegProfilingBenchmarks.DecodeJpegData)
             {
                 string fileName = (string)data[0];

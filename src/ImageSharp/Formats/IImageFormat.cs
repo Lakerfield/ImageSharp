@@ -1,60 +1,63 @@
-﻿// <copyright file="IImageFormat.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System.Collections.Generic;
+
+namespace SixLabors.ImageSharp.Formats
 {
-    using System.Collections.Generic;
-
     /// <summary>
-    /// Encapsulates a supported image format, providing means to encode and decode an image.
-    /// Individual formats implements in this interface must be registered in the <see cref="Configuration"/>
+    /// Defines the contract for an image format.
     /// </summary>
     public interface IImageFormat
     {
         /// <summary>
-        /// Gets the standard identifier used on the Internet to indicate the type of data that a file contains.
+        /// Gets the name that describes this image format.
         /// </summary>
-        string MimeType { get; }
+        string Name { get; }
 
         /// <summary>
-        /// Gets the default file extension for this format.
+        /// Gets the default mimetype that the image format uses
         /// </summary>
-        string Extension { get; }
+        string DefaultMimeType { get; }
 
         /// <summary>
-        /// Gets the supported file extensions for this format.
+        /// Gets all the mimetypes that have been used by this image format.
         /// </summary>
-        /// <returns>
-        /// The supported file extension.
-        /// </returns>
-        IEnumerable<string> SupportedExtensions { get; }
+        IEnumerable<string> MimeTypes { get; }
 
         /// <summary>
-        /// Gets the image encoder for encoding an image from a stream.
+        /// Gets the file extensions this image format commonly uses.
         /// </summary>
-        IImageEncoder Encoder { get; }
+        IEnumerable<string> FileExtensions { get; }
+    }
 
+    /// <summary>
+    /// Defines the contract for an image format containing metadata.
+    /// </summary>
+    /// <typeparam name="TFormatMetadata">The type of format metadata.</typeparam>
+    public interface IImageFormat<out TFormatMetadata> : IImageFormat
+        where TFormatMetadata : class
+    {
         /// <summary>
-        /// Gets the image decoder for decoding an image from a stream.
+        /// Creates a default instance of the format metadata.
         /// </summary>
-        IImageDecoder Decoder { get; }
+        /// <returns>The <typeparamref name="TFormatMetadata"/>.</returns>
+        TFormatMetadata CreateDefaultFormatMetadata();
+    }
 
+    /// <summary>
+    /// Defines the contract for an image format containing metadata with multiple frames.
+    /// </summary>
+    /// <typeparam name="TFormatMetadata">The type of format metadata.</typeparam>
+    /// <typeparam name="TFormatFrameMetadata">The type of format frame metadata.</typeparam>
+    public interface IImageFormat<out TFormatMetadata, out TFormatFrameMetadata> : IImageFormat<TFormatMetadata>
+        where TFormatMetadata : class
+        where TFormatFrameMetadata : class
+    {
         /// <summary>
-        /// Gets the size of the header for this image type.
+        /// Creates a default instance of the format frame metadata.
         /// </summary>
-        /// <value>The size of the header.</value>
-        int HeaderSize { get; }
-
-        /// <summary>
-        /// Returns a value indicating whether the <see cref="IImageDecoder"/> supports the specified
-        /// file header.
-        /// </summary>
-        /// <param name="header">The <see cref="T:byte[]"/> containing the file header.</param>
-        /// <returns>
-        /// True if the decoder supports the file header; otherwise, false.
-        /// </returns>
-        bool IsSupportedFileFormat(byte[] header);
+        /// <returns>The <typeparamref name="TFormatFrameMetadata"/>.</returns>
+        TFormatFrameMetadata CreateDefaultFormatFrameMetadata();
     }
 }

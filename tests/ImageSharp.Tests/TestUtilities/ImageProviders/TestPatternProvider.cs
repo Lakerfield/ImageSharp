@@ -1,55 +1,52 @@
-﻿// <copyright file="BlankProvider.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests
+using System;
+using System.Collections.Generic;
+using System.Net.Mime;
+using System.Numerics;
+
+using SixLabors.ImageSharp.Memory;
+using SixLabors.ImageSharp.PixelFormats;
+
+namespace SixLabors.ImageSharp.Tests
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Numerics;
-
-    using ImageSharp.PixelFormats;
-
-    using Xunit.Abstractions;
-
     public abstract partial class TestImageProvider<TPixel>
         where TPixel : struct, IPixel<TPixel>
     {
-
         /// <summary>
         /// A test image provider that produces test patterns.
         /// </summary>
-        /// <typeparam name="TPixel"></typeparam>
         private class TestPatternProvider : BlankProvider
         {
-            static Dictionary<string, Image<TPixel>> testImages = new Dictionary<string, Image<TPixel>>();
+            static readonly Dictionary<string, Image<TPixel>> TestImages = new Dictionary<string, Image<TPixel>>();
 
             public TestPatternProvider(int width, int height)
                 : base(width, height)
             {
             }
 
+            /// <summary>
+            /// This parameterless constructor is needed for xUnit deserialization
+            /// </summary>
             public TestPatternProvider()
-                : base()
             {
             }
 
-            public override string SourceFileOrDescription => $"TestPattern{this.Width}x{this.Height}";
+            public override string SourceFileOrDescription => TestUtils.AsInvariantString($"TestPattern{this.Width}x{this.Height}");
 
             public override Image<TPixel> GetImage()
             {
-                lock (testImages)
+                lock (TestImages)
                 {
-                    if (!testImages.ContainsKey(this.SourceFileOrDescription))
+                    if (!TestImages.ContainsKey(this.SourceFileOrDescription))
                     {
                         Image<TPixel> image = new Image<TPixel>(this.Width, this.Height);
                         DrawTestPattern(image);
-                        testImages.Add(this.SourceFileOrDescription, image);
+                        TestImages.Add(this.SourceFileOrDescription, image);
                     }
+                    return TestImages[this.SourceFileOrDescription].Clone(this.Configuration);
                 }
-
-                return new Image<TPixel>(testImages[this.SourceFileOrDescription]);
             }
 
             /// <summary>
@@ -59,19 +56,18 @@ namespace ImageSharp.Tests
             private static void DrawTestPattern(Image<TPixel> image)
             {
                 // first lets split the image into 4 quadrants
-                using (PixelAccessor<TPixel> pixels = image.Lock())
-                {
-                    BlackWhiteChecker(pixels); // top left
-                    VirticalBars(pixels); // top right
-                    TransparentGradients(pixels); // bottom left
-                    Rainbow(pixels); // bottom right
-                }
+                Buffer2D<TPixel> pixels = image.GetRootFramePixelBuffer();
+                BlackWhiteChecker(pixels); // top left
+                VerticalBars(pixels); // top right
+                TransparentGradients(pixels); // bottom left
+                Rainbow(pixels); // bottom right
             }
+
             /// <summary>
             /// Fills the top right quadrant with alternating solid vertical bars.
             /// </summary>
             /// <param name="pixels"></param>
-            private static void VirticalBars(PixelAccessor<TPixel> pixels)
+            private static void VerticalBars(Buffer2D<TPixel> pixels)
             {
                 // topLeft
                 int left = pixels.Width / 2;
@@ -79,13 +75,20 @@ namespace ImageSharp.Tests
                 int top = 0;
                 int bottom = pixels.Height / 2;
                 int stride = pixels.Width / 12;
-                TPixel[] c = {
-                        NamedColors<TPixel>.HotPink,
-                        NamedColors<TPixel>.Blue
-                    };
-                int p = 0;
+                if (stride < 1)
+                {
+                    stride = 1;
+                }
+
+                TPixel[] c =
+                {
+                    NamedColors<TPixel>.HotPink,
+                    NamedColors<TPixel>.Blue
+                };
+
                 for (int y = top; y < bottom; y++)
                 {
+                    int p = 0;
                     for (int x = left; x < right; x++)
                     {
                         if (x % stride == 0)
@@ -102,7 +105,7 @@ namespace ImageSharp.Tests
             /// fills the top left quadrant with a black and white checker board.
             /// </summary>
             /// <param name="pixels"></param>
-            private static void BlackWhiteChecker(PixelAccessor<TPixel> pixels)
+            private static void BlackWhiteChecker(Buffer2D<TPixel> pixels)
             {
                 // topLeft
                 int left = 0;
@@ -110,10 +113,11 @@ namespace ImageSharp.Tests
                 int top = 0;
                 int bottom = pixels.Height / 2;
                 int stride = pixels.Width / 6;
-                TPixel[] c = {
-                        NamedColors<TPixel>.Black,
-                        NamedColors<TPixel>.White
-                    };
+                TPixel[] c = 
+                {
+                    NamedColors<TPixel>.Black,
+                    NamedColors<TPixel>.White
+                };
 
                 int p = 0;
                 for (int y = top; y < bottom; y++)
@@ -141,7 +145,7 @@ namespace ImageSharp.Tests
             /// Fills the bottom left quadrent with 3 horizental bars in Red, Green and Blue with a alpha gradient from left (transparent) to right (solid).
             /// </summary>
             /// <param name="pixels"></param>
-            private static void TransparentGradients(PixelAccessor<TPixel> pixels)
+            private static void TransparentGradients(Buffer2D<TPixel> pixels)
             {
                 // topLeft
                 int left = 0;
@@ -160,20 +164,20 @@ namespace ImageSharp.Tests
                 {
                     blue.W = red.W = green.W = (float)x / (float)right;
 
-                    c.PackFromVector4(red);
+                    c.FromVector4(red);
                     int topBand = top;
                     for (int y = topBand; y < top + height; y++)
                     {
                         pixels[x, y] = c;
                     }
                     topBand = topBand + height;
-                    c.PackFromVector4(green);
+                    c.FromVector4(green);
                     for (int y = topBand; y < topBand + height; y++)
                     {
                         pixels[x, y] = c;
                     }
                     topBand = topBand + height;
-                    c.PackFromVector4(blue);
+                    c.FromVector4(blue);
                     for (int y = topBand; y < bottom; y++)
                     {
                         pixels[x, y] = c;
@@ -186,7 +190,7 @@ namespace ImageSharp.Tests
             /// A better algorithm could be used but it works
             /// </summary>
             /// <param name="pixels"></param>
-            private static void Rainbow(PixelAccessor<TPixel> pixels)
+            private static void Rainbow(Buffer2D<TPixel> pixels)
             {
                 int left = pixels.Width / 2;
                 int right = pixels.Width;
@@ -195,18 +199,20 @@ namespace ImageSharp.Tests
 
                 int pixelCount = left * top;
                 uint stepsPerPixel = (uint)(uint.MaxValue / pixelCount);
-                TPixel c = default(TPixel);
+                TPixel c = default;
                 Rgba32 t = new Rgba32(0);
 
                 for (int x = left; x < right; x++)
+                {
                     for (int y = top; y < bottom; y++)
                     {
                         t.PackedValue += stepsPerPixel;
                         Vector4 v = t.ToVector4();
                         //v.W = (x - left) / (float)left;
-                        c.PackFromVector4(v);
+                        c.FromVector4(v);
                         pixels[x, y] = c;
                     }
+                }
             }
         }
     }

@@ -1,18 +1,17 @@
-﻿// <copyright file="BinaryThresholdProcessor.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Processing.Processors
+using System;
+
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.ParallelUtils;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.Primitives;
+
+namespace SixLabors.ImageSharp.Processing.Processors.Binarization
 {
-    using System;
-    using System.Threading.Tasks;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
-    /// An <see cref="IImageProcessor{TPixel}"/> to perform binary threshold filtering against an
-    /// <see cref="Image"/>. The image will be converted to grayscale before thresholding occurs.
+    /// Performs simple binary threshold filtering against an image.
     /// </summary>
     /// <typeparam name="TPixel">The pixel format.</typeparam>
     internal class BinaryThresholdProcessor<TPixel> : ImageProcessor<TPixel>
@@ -23,14 +22,22 @@ namespace ImageSharp.Processing.Processors
         /// </summary>
         /// <param name="threshold">The threshold to split the image. Must be between 0 and 1.</param>
         public BinaryThresholdProcessor(float threshold)
+            : this(threshold, NamedColors<TPixel>.White, NamedColors<TPixel>.Black)
         {
-            // TODO: Check thresholding limit. Colors should probably have Max/Min/Middle properties.
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="BinaryThresholdProcessor{TPixel}"/> class.
+        /// </summary>
+        /// <param name="threshold">The threshold to split the image. Must be between 0 and 1.</param>
+        /// <param name="upperColor">The color to use for pixels that are above the threshold.</param>
+        /// <param name="lowerColor">The color to use for pixels that are below the threshold.</param>
+        public BinaryThresholdProcessor(float threshold, TPixel upperColor, TPixel lowerColor)
+        {
             Guard.MustBeBetweenOrEqualTo(threshold, 0, 1, nameof(threshold));
             this.Threshold = threshold;
-
-            // Default to white/black for upper/lower.
-            this.UpperColor = NamedColors<TPixel>.White;
-            this.LowerColor = NamedColors<TPixel>.Black;
+            this.UpperColor = upperColor;
+            this.LowerColor = lowerColor;
         }
 
         /// <summary>
@@ -49,59 +56,46 @@ namespace ImageSharp.Processing.Processors
         public TPixel LowerColor { get; set; }
 
         /// <inheritdoc/>
-        protected override void BeforeApply(ImageBase<TPixel> source, Rectangle sourceRectangle)
+        protected override void OnFrameApply(
+            ImageFrame<TPixel> source,
+            Rectangle sourceRectangle,
+            Configuration configuration)
         {
-            new GrayscaleBt709Processor<TPixel>().Apply(source, sourceRectangle);
-        }
-
-        /// <inheritdoc/>
-        protected override void OnApply(ImageBase<TPixel> source, Rectangle sourceRectangle)
-        {
-            float threshold = this.Threshold;
+            byte threshold = (byte)MathF.Round(this.Threshold * 255F);
             TPixel upper = this.UpperColor;
             TPixel lower = this.LowerColor;
 
-            int startY = sourceRectangle.Y;
-            int endY = sourceRectangle.Bottom;
-            int startX = sourceRectangle.X;
-            int endX = sourceRectangle.Right;
+            var interest = Rectangle.Intersect(sourceRectangle, source.Bounds());
+            int startY = interest.Y;
+            int endY = interest.Bottom;
+            int startX = interest.X;
+            int endX = interest.Right;
 
-            // Align start/end positions.
-            int minX = Math.Max(0, startX);
-            int maxX = Math.Min(source.Width, endX);
-            int minY = Math.Max(0, startY);
-            int maxY = Math.Min(source.Height, endY);
+            bool isAlphaOnly = typeof(TPixel) == typeof(Alpha8);
 
-            // Reset offset if necessary.
-            if (minX > 0)
-            {
-                startX = 0;
-            }
+            var workingRect = Rectangle.FromLTRB(startX, startY, endX, endY);
 
-            if (minY > 0)
-            {
-                startY = 0;
-            }
-
-            using (PixelAccessor<TPixel> sourcePixels = source.Lock())
-            {
-                Parallel.For(
-                    minY,
-                    maxY,
-                    this.ParallelOptions,
-                    y =>
+            ParallelHelper.IterateRows(
+                workingRect,
+                configuration,
+                rows =>
                     {
-                        int offsetY = y - startY;
-                        for (int x = minX; x < maxX; x++)
+                        Rgba32 rgba = default;
+                        for (int y = rows.Min; y < rows.Max; y++)
                         {
-                            int offsetX = x - startX;
-                            TPixel color = sourcePixels[offsetX, offsetY];
+                            Span<TPixel> row = source.GetPixelRowSpan(y);
 
-                            // Any channel will do since it's Grayscale.
-                            sourcePixels[offsetX, offsetY] = color.ToVector4().X >= threshold ? upper : lower;
+                            for (int x = startX; x < endX; x++)
+                            {
+                                ref TPixel color = ref row[x];
+                                color.ToRgba32(ref rgba);
+
+                                // Convert to grayscale using ITU-R Recommendation BT.709 if required
+                                byte luminance = isAlphaOnly ? rgba.A : ImageMaths.Get8BitBT709Luminance(rgba.R, rgba.G, rgba.B);
+                                color = luminance >= threshold ? upper : lower;
+                            }
                         }
                     });
-            }
         }
     }
 }

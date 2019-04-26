@@ -1,12 +1,11 @@
-﻿// <copyright file="GifConstants.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System.Collections.Generic;
+using System.Text;
+
+namespace SixLabors.ImageSharp.Formats.Gif
 {
-    using System.Text;
-
     /// <summary>
     /// Constants that define specific points within a gif.
     /// </summary>
@@ -21,6 +20,11 @@ namespace ImageSharp.Formats
         /// The file version.
         /// </summary>
         public const string FileVersion = "89a";
+
+        /// <summary>
+        /// The ASCII encoded bytes used to identify the GIF file.
+        /// </summary>
+        internal static readonly byte[] MagicNumber = Encoding.ASCII.GetBytes(FileType + FileVersion);
 
         /// <summary>
         /// The extension block introducer <value>!</value>.
@@ -38,14 +42,24 @@ namespace ImageSharp.Formats
         public const byte ApplicationExtensionLabel = 0xFF;
 
         /// <summary>
-        /// The application identification.
-        /// </summary>
-        public const string ApplicationIdentification = "NETSCAPE2.0";
-
-        /// <summary>
         /// The application block size.
         /// </summary>
-        public const byte ApplicationBlockSize = 0x0b;
+        public const byte ApplicationBlockSize = 11;
+
+        /// <summary>
+        /// The application identification.
+        /// </summary>
+        public const string NetscapeApplicationIdentification = "NETSCAPE2.0";
+
+        /// <summary>
+        /// The ASCII encoded application identification bytes.
+        /// </summary>
+        internal static readonly byte[] NetscapeApplicationIdentificationBytes = Encoding.ASCII.GetBytes(NetscapeApplicationIdentification);
+
+        /// <summary>
+        /// The Netscape looping application sub block size.
+        /// </summary>
+        public const byte NetscapeLoopingSubBlockSize = 3;
 
         /// <summary>
         /// The comment label.
@@ -90,6 +104,16 @@ namespace ImageSharp.Formats
         /// <summary>
         /// Gets the default encoding to use when reading comments.
         /// </summary>
-        public static Encoding DefaultEncoding { get; } = Encoding.GetEncoding("ASCII");
+        public static readonly Encoding DefaultEncoding = Encoding.ASCII;
+
+        /// <summary>
+        /// The list of mimetypes that equate to a gif.
+        /// </summary>
+        public static readonly IEnumerable<string> MimeTypes = new[] { "image/gif" };
+
+        /// <summary>
+        /// The list of file extensions that equate to a gif.
+        /// </summary>
+        public static readonly IEnumerable<string> FileExtensions = new[] { "gif" };
     }
 }

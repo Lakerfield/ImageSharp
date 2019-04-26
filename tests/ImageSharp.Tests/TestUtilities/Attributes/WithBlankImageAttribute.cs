@@ -1,13 +1,11 @@
-﻿// <copyright file="WithBlankImagesAttribute.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests
+using System;
+using System.Reflection;
+
+namespace SixLabors.ImageSharp.Tests
 {
-    using System;
-    using System.Reflection;
-
     /// <summary>
     /// Triggers passing <see cref="TestImageProvider{TPixel}"/> instances which produce a blank image of size width * height.
     /// One <see cref="TestImageProvider{TPixel}"/> instance will be passed for each the pixel format defined by the pixelTypes parameter
@@ -31,6 +29,7 @@ namespace ImageSharp.Tests
         /// <summary>
         /// Triggers passing an <see cref="TestImageProvider{TPixel}"/> that produces a blank image of size width * height
         /// </summary>
+        /// <param name="memberData">The member data</param>
         /// <param name="width">The required width</param>
         /// <param name="height">The required height</param>
         /// <param name="pixelTypes">The requested parameter</param>

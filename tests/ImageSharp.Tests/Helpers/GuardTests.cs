@@ -1,27 +1,60 @@
-﻿// <copyright file="GuardTests.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests.Helpers
+using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+
+using Xunit;
+// ReSharper disable InconsistentNaming
+
+namespace SixLabors.ImageSharp.Tests.Helpers
 {
-    using System;
-    using System.Diagnostics.CodeAnalysis;
-
-    using Xunit;
-
     /// <summary>
     /// Tests the <see cref="Guard"/> helper.
     /// </summary>
     public class GuardTests
     {
+        class Test
+        {
+        }
+
+        [Theory]
+        [InlineData(0, 0)]
+        [InlineData(0, 1)]
+        [InlineData(0, 42)]
+        [InlineData(1, 1)]
+        [InlineData(10, 42)]
+        [InlineData(42, 42)]
+        public void DestinationShouldNotBeTooShort_WhenOk(int sourceLength, int destLength)
+        {
+            ReadOnlySpan<int> source = new int[sourceLength];
+            Span<float> dest = new float[destLength];
+
+            Guard.DestinationShouldNotBeTooShort(source, dest, nameof(dest));
+        }
+
+        [Theory]
+        [InlineData(1, 0)]
+        [InlineData(42, 41)]
+        public void DestinationShouldNotBeTooShort_WhenThrows(int sourceLength, int destLength)
+        {
+            Assert.ThrowsAny<ArgumentException>(
+                () =>
+                    {
+                        ReadOnlySpan<int> source = new int[sourceLength];
+                        Span<float> dest = new float[destLength];
+                        Guard.DestinationShouldNotBeTooShort(source, dest, nameof(dest));
+                    });
+        }
+
         /// <summary>
         /// Tests that the <see cref="M:Guard.NotNull"/> method throws when the argument is null.
         /// </summary>
         [Fact]
         public void NotNullThrowsWhenArgIsNull()
         {
-            Assert.Throws<ArgumentNullException>(() => Guard.NotNull(null, "foo"));
+            Assert.Throws<ArgumentNullException>(() => Guard.NotNull((Test)null, "foo"));
         }
 
         /// <summary>
@@ -30,7 +63,7 @@ namespace ImageSharp.Tests.Helpers
         [Fact]
         public void NotNullThrowsWhenArgNameEmpty()
         {
-            Assert.Throws<ArgumentNullException>(() => Guard.NotNull(null, string.Empty));
+            Assert.Throws<ArgumentNullException>(() => Guard.NotNull((Test)null, string.Empty));
         }
 
         /// <summary>
@@ -38,27 +71,27 @@ namespace ImageSharp.Tests.Helpers
         /// </summary>
         [Fact]
         [SuppressMessage("StyleCop.CSharp.ReadabilityRules", "SA1122:UseStringEmptyForEmptyStrings", Justification = "Reviewed. Suppression is OK here.")]
-        public void NotEmptyThrowsWhenEmpty()
+        public void NotEmptyOrWhiteSpaceThrowsWhenEmpty()
         {
-            Assert.Throws<ArgumentException>(() => Guard.NotNullOrEmpty("", string.Empty));
+            Assert.Throws<ArgumentException>(() => Guard.NotNullOrWhiteSpace("", string.Empty));
         }
 
         /// <summary>
         /// Tests that the <see cref="M:Guard.NotEmpty"/> method throws when the argument is whitespace.
         /// </summary>
         [Fact]
-        public void NotEmptyThrowsWhenWhitespace()
+        public void NotEmptyOrWhiteSpaceThrowsOnWhitespace()
         {
-            Assert.Throws<ArgumentException>(() => Guard.NotNullOrEmpty(" ", string.Empty));
+            Assert.Throws<ArgumentException>(() => Guard.NotNullOrWhiteSpace(" ", string.Empty));
         }
 
         /// <summary>
         /// Tests that the <see cref="M:Guard.NotEmpty"/> method throws when the argument name is null.
         /// </summary>
         [Fact]
-        public void NotEmptyThrowsWhenParameterNameNull()
+        public void NotEmptyOrWhiteSpaceThrowsWhenParameterNameNull()
         {
-            Assert.Throws<ArgumentNullException>(() => Guard.NotNullOrEmpty(null, null));
+            Assert.Throws<ArgumentNullException>(() => Guard.NotNullOrWhiteSpace(null, null));
         }
 
         /// <summary>

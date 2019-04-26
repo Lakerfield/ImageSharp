@@ -1,22 +1,29 @@
-// <copyright file="EntropyCropProcessor.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Processing.Processors
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing.Processors.Binarization;
+using SixLabors.ImageSharp.Processing.Processors.Convolution;
+using SixLabors.Primitives;
+
+namespace SixLabors.ImageSharp.Processing.Processors.Transforms
 {
-    using System;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
-    /// Provides methods to allow the cropping of an image to preserve areas of highest
-    /// entropy.
+    /// Provides methods to allow the cropping of an image to preserve areas of highest entropy.
     /// </summary>
     /// <typeparam name="TPixel">The pixel format.</typeparam>
     internal class EntropyCropProcessor<TPixel> : ImageProcessor<TPixel>
         where TPixel : struct, IPixel<TPixel>
     {
+        /// <summary>
+        /// Initializes a new instance of the <see cref="EntropyCropProcessor{TPixel}"/> class.
+        /// </summary>
+        public EntropyCropProcessor()
+        : this(.5F)
+        {
+        }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="EntropyCropProcessor{TPixel}"/> class.
         /// </summary>
@@ -26,36 +33,42 @@ namespace ImageSharp.Processing.Processors
         /// </exception>
         public EntropyCropProcessor(float threshold)
         {
-            Guard.MustBeBetweenOrEqualTo(threshold, 0, 1, nameof(threshold));
-            this.Value = threshold;
+            Guard.MustBeBetweenOrEqualTo(threshold, 0, 1F, nameof(threshold));
+            this.Threshold = threshold;
         }
 
         /// <summary>
-        /// Gets the threshold value.
+        /// Gets the entropy threshold value.
         /// </summary>
-        public float Value { get; }
+        public float Threshold { get; }
 
         /// <inheritdoc/>
-        protected override void OnApply(ImageBase<TPixel> source, Rectangle sourceRectangle)
+        protected override void BeforeImageApply(Image<TPixel> source, Rectangle sourceRectangle)
         {
-            using (ImageBase<TPixel> temp = new Image<TPixel>(source))
+            Rectangle rectangle;
+
+            // All frames have be the same size so we only need to calculate the correct dimensions for the first frame
+            using (ImageFrame<TPixel> temp = source.Frames.RootFrame.Clone())
             {
+                Configuration configuration = source.GetConfiguration();
+
                 // Detect the edges.
-                new SobelProcessor<TPixel>().Apply(temp, sourceRectangle);
+                new SobelProcessor<TPixel>(false).Apply(temp, sourceRectangle, configuration);
 
                 // Apply threshold binarization filter.
-                new BinaryThresholdProcessor<TPixel>(this.Value).Apply(temp, sourceRectangle);
+                new BinaryThresholdProcessor<TPixel>(this.Threshold).Apply(temp, sourceRectangle, configuration);
 
                 // Search for the first white pixels
-                Rectangle rectangle = ImageMaths.GetFilteredBoundingRectangle(temp, 0);
-
-                if (rectangle == sourceRectangle)
-                {
-                    return;
-                }
-
-                new CropProcessor<TPixel>(rectangle).Apply(source, sourceRectangle);
+                rectangle = ImageMaths.GetFilteredBoundingRectangle(temp, 0);
             }
+
+            new CropProcessor<TPixel>(rectangle, source.Size()).Apply(source, sourceRectangle);
+        }
+
+        /// <inheritdoc/>
+        protected override void OnFrameApply(ImageFrame<TPixel> source, Rectangle sourceRectangle, Configuration configuration)
+        {
+            // All processing happens at the image level within BeforeImageApply();
         }
     }
 }

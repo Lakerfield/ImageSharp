@@ -1,85 +1,296 @@
-﻿// <copyright file="PngDecoderTests.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests
+// ReSharper disable InconsistentNaming
+
+using System.Buffers.Binary;
+using System.IO;
+using System.Text;
+
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Metadata;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Tests.TestUtilities.ImageComparison;
+
+using Xunit;
+
+namespace SixLabors.ImageSharp.Tests.Formats.Png
 {
-    using System.Text;
-    using Xunit;
-
-    using ImageSharp.Formats;
-    using ImageSharp.PixelFormats;
-
-    public class PngDecoderTests
+    public partial class PngDecoderTests
     {
-        private const PixelTypes PixelTypes = Tests.PixelTypes.StandardImageClass | Tests.PixelTypes.RgbaVector | Tests.PixelTypes.Argb32;
+        private const PixelTypes PixelTypes = Tests.PixelTypes.Rgba32 | Tests.PixelTypes.RgbaVector | Tests.PixelTypes.Argb32;
 
-        public static readonly string[] TestFiles =
+        public static readonly string[] CommonTestImages =
+        {
+            TestImages.Png.Splash,
+            TestImages.Png.Indexed,
+            TestImages.Png.FilterVar,
+            TestImages.Png.Bad.ChunkLength1,
+            TestImages.Png.Bad.CorruptedChunk,
+
+            TestImages.Png.VimImage1,
+            TestImages.Png.VersioningImage1,
+            TestImages.Png.VersioningImage2,
+
+            TestImages.Png.SnakeGame,
+            TestImages.Png.Banner7Adam7InterlaceMode,
+            TestImages.Png.Banner8Index,
+
+            TestImages.Png.Bad.ChunkLength2,
+            TestImages.Png.VimImage2,
+
+            TestImages.Png.Rgb24BppTrans,
+            TestImages.Png.GrayAlpha8Bit,
+            TestImages.Png.Gray1BitTrans,
+            TestImages.Png.Bad.ZlibOverflow
+        };
+
+        public static readonly string[] TestImages48Bpp =
+        {
+            TestImages.Png.Rgb48Bpp,
+            TestImages.Png.Rgb48BppInterlaced
+        };
+
+        public static readonly string[] TestImages64Bpp =
+{
+            TestImages.Png.Rgba64Bpp,
+            TestImages.Png.Rgb48BppTrans
+        };
+
+        public static readonly string[] TestImagesGray16Bit =
+        {
+            TestImages.Png.Gray16Bit,
+        };
+
+        public static readonly string[] TestImagesGrayAlpha16Bit =
+        {
+            TestImages.Png.GrayAlpha16Bit,
+            TestImages.Png.GrayTrns16BitInterlaced
+        };
+
+        public static readonly string[] TestImagesGray8BitInterlaced =
             {
-                TestImages.Png.Splash, TestImages.Png.Indexed, TestImages.Png.Interlaced, TestImages.Png.FilterVar,
-                TestImages.Png.ChunkLength1, TestImages.Png.ChunkLength2
+                TestImages.Png.GrayAlpha1BitInterlaced,
+                TestImages.Png.GrayAlpha2BitInterlaced,
+                TestImages.Png.Gray4BitInterlaced,
+                TestImages.Png.GrayAlpha8BitInterlaced
             };
 
+        public static readonly TheoryData<string, int, int, PixelResolutionUnit> RatioFiles =
+        new TheoryData<string, int, int, PixelResolutionUnit>
+        {
+            { TestImages.Png.Splash, 11810, 11810 , PixelResolutionUnit.PixelsPerMeter},
+            { TestImages.Png.Ratio1x4, 1, 4 , PixelResolutionUnit.AspectRatio},
+            { TestImages.Png.Ratio4x1, 4, 1, PixelResolutionUnit.AspectRatio }
+        };
+
         [Theory]
-        [WithFileCollection(nameof(TestFiles), PixelTypes)]
-        public void DecodeAndReSave<TPixel>(TestImageProvider<TPixel> imageProvider)
+        [WithFileCollection(nameof(CommonTestImages), PixelTypes.Rgba32)]
+        public void Decode<TPixel>(TestImageProvider<TPixel> provider)
             where TPixel : struct, IPixel<TPixel>
         {
-            using (Image<TPixel> image = imageProvider.GetImage())
+            using (Image<TPixel> image = provider.GetImage(new PngDecoder()))
             {
-                imageProvider.Utility.SaveTestOutputFile(image, "bmp");
+                image.DebugSave(provider);
+                image.CompareToOriginal(provider, ImageComparer.Exact);
+            }
+        }
+
+        [Theory]
+        [WithFile(TestImages.Png.Interlaced, PixelTypes.Rgba32)]
+        public void Decode_Interlaced_ImageIsCorrect<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
+        {
+            using (Image<TPixel> image = provider.GetImage(new PngDecoder()))
+            {
+                image.DebugSave(provider);
+                image.CompareToOriginal(provider, ImageComparer.Exact);
+            }
+        }
+
+        [Theory]
+        [WithFileCollection(nameof(TestImages48Bpp), PixelTypes.Rgb48)]
+        public void Decode_48Bpp<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
+        {
+            using (Image<TPixel> image = provider.GetImage(new PngDecoder()))
+            {
+                image.DebugSave(provider);
+                image.CompareToOriginal(provider, ImageComparer.Exact);
+            }
+        }
+
+        [Theory]
+        [WithFileCollection(nameof(TestImages64Bpp), PixelTypes.Rgba64)]
+        public void Decode_64Bpp<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
+        {
+            using (Image<TPixel> image = provider.GetImage(new PngDecoder()))
+            {
+                image.DebugSave(provider);
+                image.CompareToOriginal(provider, ImageComparer.Exact);
+            }
+        }
+
+        [Theory]
+        [WithFileCollection(nameof(TestImagesGray8BitInterlaced), PixelTypes.Rgba32)]
+        public void Decoder_Gray8bitInterlaced<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
+        {
+            using (Image<TPixel> image = provider.GetImage(new PngDecoder()))
+            {
+                image.DebugSave(provider);
+                image.CompareToOriginal(provider, ImageComparer.Exact);
+            }
+        }
+
+        [Theory]
+        [WithFileCollection(nameof(TestImagesGray16Bit), PixelTypes.Rgb48)]
+        public void Decode_Gray16Bit<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
+        {
+            using (Image<TPixel> image = provider.GetImage(new PngDecoder()))
+            {
+                image.DebugSave(provider);
+                image.CompareToOriginal(provider, ImageComparer.Exact);
+            }
+        }
+
+        [Theory]
+        [WithFileCollection(nameof(TestImagesGrayAlpha16Bit), PixelTypes.Rgba64)]
+        public void Decode_GrayAlpha16Bit<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
+        {
+            using (Image<TPixel> image = provider.GetImage(new PngDecoder()))
+            {
+                image.DebugSave(provider);
+                image.CompareToOriginal(provider, ImageComparer.Exact);
+            }
+        }
+
+        [Theory]
+        [WithFile(TestImages.Png.GrayAlpha8BitInterlaced, PixelTypes)]
+        public void Decoder_CanDecodeGrey8bitWithAlpha<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
+        {
+            using (Image<TPixel> image = provider.GetImage(new PngDecoder()))
+            {
+                image.DebugSave(provider);
+                image.CompareToOriginal(provider, ImageComparer.Exact);
+            }
+        }
+
+        [Theory]
+        [WithFile(TestImages.Png.Splash, PixelTypes)]
+        public void Decoder_IsNotBoundToSinglePixelType<TPixel>(TestImageProvider<TPixel> provider)
+            where TPixel : struct, IPixel<TPixel>
+        {
+            using (Image<TPixel> image = provider.GetImage(new PngDecoder()))
+            {
+                image.DebugSave(provider);
+                image.CompareToOriginal(provider, ImageComparer.Exact);
             }
         }
 
         [Fact]
         public void Decode_IgnoreMetadataIsFalse_TextChunckIsRead()
         {
-            PngDecoderOptions options = new PngDecoderOptions()
+            var options = new PngDecoder()
             {
                 IgnoreMetadata = false
             };
 
-            TestFile testFile = TestFile.Create(TestImages.Png.Blur);
+            var testFile = TestFile.Create(TestImages.Png.Blur);
 
-            using (Image image = testFile.CreateImage(options))
+            using (Image<Rgba32> image = testFile.CreateImage(options))
             {
-                Assert.Equal(1, image.MetaData.Properties.Count);
-                Assert.Equal("Software", image.MetaData.Properties[0].Name);
-                Assert.Equal("paint.net 4.0.6", image.MetaData.Properties[0].Value);
+                Assert.Equal(1, image.Metadata.Properties.Count);
+                Assert.Equal("Software", image.Metadata.Properties[0].Name);
+                Assert.Equal("paint.net 4.0.6", image.Metadata.Properties[0].Value);
             }
         }
 
         [Fact]
         public void Decode_IgnoreMetadataIsTrue_TextChunksAreIgnored()
         {
-            PngDecoderOptions options = new PngDecoderOptions()
+            var options = new PngDecoder()
             {
                 IgnoreMetadata = true
             };
 
-            TestFile testFile = TestFile.Create(TestImages.Png.Blur);
+            var testFile = TestFile.Create(TestImages.Png.Blur);
 
-            using (Image image = testFile.CreateImage(options))
+            using (Image<Rgba32> image = testFile.CreateImage(options))
             {
-                Assert.Equal(0, image.MetaData.Properties.Count);
+                Assert.Equal(0, image.Metadata.Properties.Count);
             }
         }
 
         [Fact]
         public void Decode_TextEncodingSetToUnicode_TextIsReadWithCorrectEncoding()
         {
-            PngDecoderOptions options = new PngDecoderOptions()
+            var options = new PngDecoder()
             {
                 TextEncoding = Encoding.Unicode
             };
 
-            TestFile testFile = TestFile.Create(TestImages.Png.Blur);
+            var testFile = TestFile.Create(TestImages.Png.Blur);
 
-            using (Image image = testFile.CreateImage(options))
+            using (Image<Rgba32> image = testFile.CreateImage(options))
             {
-                Assert.Equal(1, image.MetaData.Properties.Count);
-                Assert.Equal("潓瑦慷敲", image.MetaData.Properties[0].Name);
+                Assert.Equal(1, image.Metadata.Properties.Count);
+                Assert.Equal("潓瑦慷敲", image.Metadata.Properties[0].Name);
+            }
+        }
+
+        [Theory]
+        [InlineData(TestImages.Png.Bpp1, 1)]
+        [InlineData(TestImages.Png.Gray4Bpp, 4)]
+        [InlineData(TestImages.Png.Palette8Bpp, 8)]
+        [InlineData(TestImages.Png.Pd, 24)]
+        [InlineData(TestImages.Png.Blur, 32)]
+        [InlineData(TestImages.Png.Rgb48Bpp, 48)]
+        [InlineData(TestImages.Png.Rgb48BppInterlaced, 48)]
+        public void Identify(string imagePath, int expectedPixelSize)
+        {
+            var testFile = TestFile.Create(imagePath);
+            using (var stream = new MemoryStream(testFile.Bytes, false))
+            {
+                Assert.Equal(expectedPixelSize, Image.Identify(stream)?.PixelType?.BitsPerPixel);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(RatioFiles))]
+        public void Decode_VerifyRatio(string imagePath, int xResolution, int yResolution, PixelResolutionUnit resolutionUnit)
+        {
+            var testFile = TestFile.Create(imagePath);
+            using (var stream = new MemoryStream(testFile.Bytes, false))
+            {
+                var decoder = new PngDecoder();
+                using (Image<Rgba32> image = decoder.Decode<Rgba32>(Configuration.Default, stream))
+                {
+                    ImageMetadata meta = image.Metadata;
+                    Assert.Equal(xResolution, meta.HorizontalResolution);
+                    Assert.Equal(yResolution, meta.VerticalResolution);
+                    Assert.Equal(resolutionUnit, meta.ResolutionUnits);
+                }
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(RatioFiles))]
+        public void Identify_VerifyRatio(string imagePath, int xResolution, int yResolution, PixelResolutionUnit resolutionUnit)
+        {
+            var testFile = TestFile.Create(imagePath);
+            using (var stream = new MemoryStream(testFile.Bytes, false))
+            {
+                var decoder = new PngDecoder();
+                IImageInfo image = decoder.Identify(Configuration.Default, stream);
+                ImageMetadata meta = image.Metadata;
+                Assert.Equal(xResolution, meta.HorizontalResolution);
+                Assert.Equal(yResolution, meta.VerticalResolution);
+                Assert.Equal(resolutionUnit, meta.ResolutionUnits);
             }
         }
     }

@@ -1,28 +1,32 @@
-﻿// <copyright file="CropProcessor.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Processing.Processors
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.ParallelUtils;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.Primitives;
+
+namespace SixLabors.ImageSharp.Processing.Processors.Transforms
 {
-    using System;
-    using System.Threading.Tasks;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
     /// Provides methods to allow the cropping of an image.
     /// </summary>
     /// <typeparam name="TPixel">The pixel format.</typeparam>
-    internal class CropProcessor<TPixel> : ImageProcessor<TPixel>
+    internal class CropProcessor<TPixel> : TransformProcessorBase<TPixel>
         where TPixel : struct, IPixel<TPixel>
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="CropProcessor{TPixel}"/> class.
         /// </summary>
         /// <param name="cropRectangle">The target cropped rectangle.</param>
-        public CropProcessor(Rectangle cropRectangle)
+        /// <param name="sourceSize">The source image size.</param>
+        public CropProcessor(Rectangle cropRectangle, Size sourceSize)
         {
+            // Check bounds here and throw if we are passed a rectangle exceeding our source bounds.
+            Guard.IsTrue(new Rectangle(Point.Empty, sourceSize).Contains(cropRectangle), nameof(cropRectangle), "Crop rectangle should be smaller than the source bounds.");
             this.CropRectangle = cropRectangle;
         }
 
@@ -32,37 +36,43 @@ namespace ImageSharp.Processing.Processors
         public Rectangle CropRectangle { get; }
 
         /// <inheritdoc/>
-        protected override void OnApply(ImageBase<TPixel> source, Rectangle sourceRectangle)
+        protected override Image<TPixel> CreateDestination(Image<TPixel> source, Rectangle sourceRectangle)
         {
-            if (this.CropRectangle == sourceRectangle)
+            // We will always be creating the clone even for mutate because we may need to resize the canvas
+            IEnumerable<ImageFrame<TPixel>> frames = source.Frames.Select(x => new ImageFrame<TPixel>(source.GetConfiguration(), this.CropRectangle.Width, this.CropRectangle.Height, x.Metadata.DeepClone()));
+
+            // Use the overload to prevent an extra frame being added
+            return new Image<TPixel>(source.GetConfiguration(), source.Metadata.DeepClone(), frames);
+        }
+
+        /// <inheritdoc/>
+        protected override void OnFrameApply(ImageFrame<TPixel> source, ImageFrame<TPixel> destination, Rectangle sourceRectangle, Configuration configuration)
+        {
+            // Handle resize dimensions identical to the original
+            if (source.Width == destination.Width && source.Height == destination.Height && sourceRectangle == this.CropRectangle)
             {
+                // the cloned will be blank here copy all the pixel data over
+                source.GetPixelSpan().CopyTo(destination.GetPixelSpan());
                 return;
             }
 
-            int minY = Math.Max(this.CropRectangle.Y, sourceRectangle.Y);
-            int maxY = Math.Min(this.CropRectangle.Bottom, sourceRectangle.Bottom);
-            int minX = Math.Max(this.CropRectangle.X, sourceRectangle.X);
-            int maxX = Math.Min(this.CropRectangle.Right, sourceRectangle.Right);
+            Rectangle rect = this.CropRectangle;
 
-            using (PixelAccessor<TPixel> targetPixels = new PixelAccessor<TPixel>(this.CropRectangle.Width, this.CropRectangle.Height))
-            {
-                using (PixelAccessor<TPixel> sourcePixels = source.Lock())
-                {
-                    Parallel.For(
-                        minY,
-                        maxY,
-                        this.ParallelOptions,
-                        y =>
+            // Copying is cheap, we should process more pixels per task:
+            ParallelExecutionSettings parallelSettings = configuration.GetParallelSettings().MultiplyMinimumPixelsPerTask(4);
+
+            ParallelHelper.IterateRows(
+                rect,
+                parallelSettings,
+                rows =>
+                    {
+                        for (int y = rows.Min; y < rows.Max; y++)
                         {
-                            for (int x = minX; x < maxX; x++)
-                            {
-                                targetPixels[x - minX, y - minY] = sourcePixels[x, y];
-                            }
-                        });
-                }
-
-                source.SwapPixelsBuffers(targetPixels);
-            }
+                            Span<TPixel> sourceRow = source.GetPixelRowSpan(y).Slice(rect.Left);
+                            Span<TPixel> targetRow = destination.GetPixelRowSpan(y - rect.Top);
+                            sourceRow.Slice(0, rect.Width).CopyTo(targetRow);
+                        }
+                    });
         }
     }
 }

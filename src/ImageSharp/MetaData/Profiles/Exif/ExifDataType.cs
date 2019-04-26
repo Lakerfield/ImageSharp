@@ -1,9 +1,7 @@
-﻿// <copyright file="ExifDataType.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp
+namespace SixLabors.ImageSharp.Metadata.Profiles.Exif
 {
     /// <summary>
     /// Specifies exif data types.
@@ -13,66 +11,66 @@ namespace ImageSharp
         /// <summary>
         /// Unknown
         /// </summary>
-        Unknown,
+        Unknown = 0,
 
         /// <summary>
-        /// Byte
+        /// An 8-bit unsigned integer.
         /// </summary>
-        Byte,
+        Byte = 1,
 
         /// <summary>
-        /// Ascii
+        /// An 8-bit byte containing one 7-bit ASCII code. The final byte is terminated with NULL.
         /// </summary>
-        Ascii,
+        Ascii = 2,
 
         /// <summary>
-        /// Short
+        /// A 16-bit (2-byte) unsigned integer.
         /// </summary>
-        Short,
+        Short = 3,
 
         /// <summary>
-        /// Long
+        /// A 32-bit (4-byte) unsigned integer.
         /// </summary>
-        Long,
+        Long = 4,
 
         /// <summary>
-        /// Rational
+        /// Two LONGs. The first LONG is the numerator and the second LONG expresses the denominator.
         /// </summary>
-        Rational,
+        Rational = 5,
 
         /// <summary>
-        /// SignedByte
+        /// An 8-bit signed integer.
         /// </summary>
-        SignedByte,
+        SignedByte = 6,
 
         /// <summary>
-        /// Undefined
+        /// An 8-bit byte that can take any value depending on the field definition.
         /// </summary>
-        Undefined,
+        Undefined = 7,
 
         /// <summary>
-        /// SignedShort
+        /// A 16-bit (2-byte) signed integer.
         /// </summary>
-        SignedShort,
+        SignedShort = 8,
 
         /// <summary>
-        /// SignedLong
+        /// A 32-bit (4-byte) signed integer (2's complement notation).
         /// </summary>
-        SignedLong,
+        SignedLong = 9,
 
         /// <summary>
-        /// SignedRational
+        /// Two SLONGs. The first SLONG is the numerator and the second SLONG is the denominator.
         /// </summary>
-        SignedRational,
+        SignedRational = 10,
 
         /// <summary>
-        /// SingleFloat
+        /// A 32-bit floating point value.
         /// </summary>
-        SingleFloat,
+        SingleFloat = 11,
 
         /// <summary>
-        /// DoubleFloat
+        /// A 64-bit floating point value.
         /// </summary>
-        DoubleFloat
+        DoubleFloat = 12
     }
 }

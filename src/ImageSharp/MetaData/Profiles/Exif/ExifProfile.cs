@@ -1,21 +1,18 @@
-﻿// <copyright file="ExifProfile.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp
+using System;
+using System.Collections.Generic;
+using System.IO;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Primitives;
+
+namespace SixLabors.ImageSharp.Metadata.Profiles.Exif
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Collections.ObjectModel;
-    using System.IO;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
     /// Represents an EXIF profile providing access to the collection of values.
     /// </summary>
-    public sealed class ExifProfile
+    public sealed class ExifProfile : IDeepCloneable<ExifProfile>
     {
         /// <summary>
         /// The byte array to read the EXIF profile from.
@@ -25,12 +22,7 @@ namespace ImageSharp
         /// <summary>
         /// The collection of EXIF values
         /// </summary>
-        private Collection<ExifValue> values;
-
-        /// <summary>
-        /// The list of invalid EXIF tags
-        /// </summary>
-        private List<ExifTag> invalidTags;
+        private List<ExifValue> values;
 
         /// <summary>
         /// The thumbnail offset position in the byte stream
@@ -58,7 +50,7 @@ namespace ImageSharp
         {
             this.Parts = ExifParts.All;
             this.data = data;
-            this.invalidTags = new List<ExifTag>();
+            this.InvalidTags = Array.Empty<ExifTag>();
         }
 
         /// <summary>
@@ -66,47 +58,47 @@ namespace ImageSharp
         /// by making a copy from another EXIF profile.
         /// </summary>
         /// <param name="other">The other EXIF profile, where the clone should be made from.</param>
-        /// <exception cref="System.ArgumentNullException"><paramref name="other"/> is null.</exception>
-        public ExifProfile(ExifProfile other)
+        private ExifProfile(ExifProfile other)
         {
-            Guard.NotNull(other, nameof(other));
-
             this.Parts = other.Parts;
             this.thumbnailLength = other.thumbnailLength;
             this.thumbnailOffset = other.thumbnailOffset;
-            this.invalidTags = new List<ExifTag>(other.invalidTags);
+
+            this.InvalidTags = other.InvalidTags.Count > 0
+                ? new List<ExifTag>(other.InvalidTags)
+                : (IReadOnlyList<ExifTag>)Array.Empty<ExifTag>();
+
             if (other.values != null)
             {
-                this.values = new Collection<ExifValue>();
-                foreach (ExifValue value in other.values)
+                this.values = new List<ExifValue>(other.Values.Count);
+
+                foreach (ExifValue value in other.Values)
                 {
-                    this.values.Add(new ExifValue(value));
+                    this.values.Add(value.DeepClone());
                 }
             }
-            else
+
+            if (other.data != null)
             {
-                this.data = other.data;
+                this.data = new byte[other.data.Length];
+                other.data.AsSpan().CopyTo(this.data);
             }
         }
 
         /// <summary>
         /// Gets or sets which parts will be written when the profile is added to an image.
         /// </summary>
-        public ExifParts Parts
-        {
-            get;
-            set;
-        }
+        public ExifParts Parts { get; set; }
 
         /// <summary>
         /// Gets the tags that where found but contained an invalid value.
         /// </summary>
-        public IEnumerable<ExifTag> InvalidTags => this.invalidTags;
+        public IReadOnlyList<ExifTag> InvalidTags { get; private set; }
 
         /// <summary>
         /// Gets the values of this EXIF profile.
         /// </summary>
-        public IEnumerable<ExifValue> Values
+        public IReadOnlyList<ExifValue> Values
         {
             get
             {
@@ -132,12 +124,12 @@ namespace ImageSharp
                 return null;
             }
 
-            if (this.data.Length < (this.thumbnailOffset + this.thumbnailLength))
+            if (this.data is null || this.data.Length < (this.thumbnailOffset + this.thumbnailLength))
             {
                 return null;
             }
 
-            using (MemoryStream memStream = new MemoryStream(this.data, this.thumbnailOffset, this.thumbnailLength))
+            using (var memStream = new MemoryStream(this.data, this.thumbnailOffset, this.thumbnailLength))
             {
                 return Image.Load<TPixel>(memStream);
             }
@@ -161,6 +153,31 @@ namespace ImageSharp
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Conditionally returns the value of the tag if it exists.
+        /// </summary>
+        /// <param name="tag">The tag of the EXIF value.</param>
+        /// <param name="value">The value of the tag, if found.</param>
+        /// <returns>
+        /// The <see cref="bool"/>.
+        /// </returns>
+        public bool TryGetValue(ExifTag tag, out ExifValue value)
+        {
+            foreach (ExifValue exifValue in this.Values)
+            {
+                if (exifValue.Tag == tag)
+                {
+                    value = exifValue;
+
+                    return true;
+                }
+            }
+
+            value = default;
+
+            return false;
         }
 
         /// <summary>
@@ -193,16 +210,18 @@ namespace ImageSharp
         /// <param name="value">The value.</param>
         public void SetValue(ExifTag tag, object value)
         {
-            foreach (ExifValue exifValue in this.Values)
+            for (int i = 0; i < this.Values.Count; i++)
             {
-                if (exifValue.Tag == tag)
+                if (this.values[i].Tag == tag)
                 {
-                    exifValue.Value = value;
+                    this.values[i] = this.values[i].WithValue(value);
+
                     return;
                 }
             }
 
-            ExifValue newExifValue = ExifValue.Create(tag, value);
+            var newExifValue = ExifValue.Create(tag, value);
+
             this.values.Add(newExifValue);
         }
 
@@ -212,7 +231,7 @@ namespace ImageSharp
         /// <returns>The <see cref="T:byte[]"/></returns>
         public byte[] ToByteArray()
         {
-            if (this.values == null)
+            if (this.values is null)
             {
                 return this.data;
             }
@@ -222,28 +241,39 @@ namespace ImageSharp
                 return null;
             }
 
-            ExifWriter writer = new ExifWriter(this.values, this.Parts);
+            var writer = new ExifWriter(this.values, this.Parts);
             return writer.GetData();
         }
 
+        /// <inheritdoc/>
+        public ExifProfile DeepClone() => new ExifProfile(this);
+
         /// <summary>
-        /// Synchronizes the profiles with the specified meta data.
+        /// Synchronizes the profiles with the specified metadata.
         /// </summary>
-        /// <param name="metaData">The meta data.</param>
-        internal void Sync(ImageMetaData metaData)
+        /// <param name="metadata">The metadata.</param>
+        internal void Sync(ImageMetadata metadata)
         {
-            this.SyncResolution(ExifTag.XResolution, metaData.HorizontalResolution);
-            this.SyncResolution(ExifTag.YResolution, metaData.VerticalResolution);
+            this.SyncResolution(ExifTag.XResolution, metadata.HorizontalResolution);
+            this.SyncResolution(ExifTag.YResolution, metadata.VerticalResolution);
         }
 
         private void SyncResolution(ExifTag tag, double resolution)
         {
             ExifValue value = this.GetValue(tag);
-            if (value != null)
+
+            if (value is null)
             {
-              Rational newResolution = new Rational(resolution, false);
-              this.SetValue(tag, newResolution);
+                return;
             }
+
+            if (value.IsArray || value.DataType != ExifDataType.Rational)
+            {
+                this.RemoveValue(value.Tag);
+            }
+
+            var newResolution = new Rational(resolution, false);
+            this.SetValue(tag, newResolution);
         }
 
         private void InitializeValues()
@@ -253,15 +283,20 @@ namespace ImageSharp
                 return;
             }
 
-            if (this.data == null)
+            if (this.data is null)
             {
-                this.values = new Collection<ExifValue>();
+                this.values = new List<ExifValue>();
                 return;
             }
 
-            ExifReader reader = new ExifReader();
-            this.values = reader.Read(this.data);
-            this.invalidTags = new List<ExifTag>(reader.InvalidTags);
+            var reader = new ExifReader(this.data);
+
+            this.values = reader.ReadValues();
+
+            this.InvalidTags = reader.InvalidTags.Count > 0
+                ? new List<ExifTag>(reader.InvalidTags)
+                : (IReadOnlyList<ExifTag>)Array.Empty<ExifTag>();
+
             this.thumbnailOffset = (int)reader.ThumbnailOffset;
             this.thumbnailLength = (int)reader.ThumbnailLength;
         }

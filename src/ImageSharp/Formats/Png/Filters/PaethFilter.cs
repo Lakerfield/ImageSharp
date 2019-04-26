@@ -1,43 +1,51 @@
-﻿// <copyright file="PaethFilter.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+namespace SixLabors.ImageSharp.Formats.Png.Filters
 {
-    using System;
-    using System.Runtime.CompilerServices;
-
     /// <summary>
     /// The Paeth filter computes a simple linear function of the three neighboring pixels (left, above, upper left),
     /// then chooses as predictor the neighboring pixel closest to the computed value.
     /// This technique is due to Alan W. Paeth.
     /// <see href="https://www.w3.org/TR/PNG-Filters.html"/>
     /// </summary>
-    internal static unsafe class PaethFilter
+    internal static class PaethFilter
     {
         /// <summary>
         /// Decodes the scanline
         /// </summary>
         /// <param name="scanline">The scanline to decode</param>
         /// <param name="previousScanline">The previous scanline.</param>
-        /// <param name="bytesPerScanline">The number of bytes per scanline</param>
         /// <param name="bytesPerPixel">The bytes per pixel.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Decode(byte[] scanline, byte[] previousScanline, int bytesPerScanline, int bytesPerPixel)
+        public static void Decode(Span<byte> scanline, Span<byte> previousScanline, int bytesPerPixel)
         {
-            // Paeth(x) + PaethPredictor(Raw(x-bpp), Prior(x), Prior(x-bpp))
-            fixed (byte* scan = scanline)
-            fixed (byte* prev = previousScanline)
-            {
-                for (int x = 1; x < bytesPerScanline; x++)
-                {
-                    byte left = (x - bytesPerPixel < 1) ? (byte)0 : scan[x - bytesPerPixel];
-                    byte above = prev[x];
-                    byte upperLeft = (x - bytesPerPixel < 1) ? (byte)0 : prev[x - bytesPerPixel];
+            DebugGuard.MustBeSameSized(scanline, previousScanline, nameof(scanline));
 
-                    scan[x] = (byte)((scan[x] + PaethPredicator(left, above, upperLeft)) % 256);
-                }
+            ref byte scanBaseRef = ref MemoryMarshal.GetReference(scanline);
+            ref byte prevBaseRef = ref MemoryMarshal.GetReference(previousScanline);
+
+            // Paeth(x) + PaethPredictor(Raw(x-bpp), Prior(x), Prior(x-bpp))
+            int offset = bytesPerPixel + 1; // Add one because x starts at one.
+            int x = 1;
+            for (; x < offset; x++)
+            {
+                ref byte scan = ref Unsafe.Add(ref scanBaseRef, x);
+                byte above = Unsafe.Add(ref prevBaseRef, x);
+                scan = (byte)(scan + above);
+            }
+
+            for (; x < scanline.Length; x++)
+            {
+                ref byte scan = ref Unsafe.Add(ref scanBaseRef, x);
+                byte left = Unsafe.Add(ref scanBaseRef, x - bytesPerPixel);
+                byte above = Unsafe.Add(ref prevBaseRef, x);
+                byte upperLeft = Unsafe.Add(ref prevBaseRef, x - bytesPerPixel);
+                scan = (byte)(scan + PaethPredictor(left, above, upperLeft));
             }
         }
 
@@ -48,25 +56,45 @@ namespace ImageSharp.Formats
         /// <param name="previousScanline">The previous scanline.</param>
         /// <param name="result">The filtered scanline result.</param>
         /// <param name="bytesPerPixel">The bytes per pixel.</param>
+        /// <param name="sum">The sum of the total variance of the filtered row</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Encode(byte[] scanline, byte[] previousScanline, byte[] result, int bytesPerPixel)
+        public static void Encode(Span<byte> scanline, Span<byte> previousScanline, Span<byte> result, int bytesPerPixel, out int sum)
         {
+            DebugGuard.MustBeSameSized(scanline, previousScanline, nameof(scanline));
+            DebugGuard.MustBeSizedAtLeast(result, scanline, nameof(result));
+
+            ref byte scanBaseRef = ref MemoryMarshal.GetReference(scanline);
+            ref byte prevBaseRef = ref MemoryMarshal.GetReference(previousScanline);
+            ref byte resultBaseRef = ref MemoryMarshal.GetReference(result);
+            sum = 0;
+
             // Paeth(x) = Raw(x) - PaethPredictor(Raw(x-bpp), Prior(x), Prior(x - bpp))
-            fixed (byte* scan = scanline)
-            fixed (byte* prev = previousScanline)
-            fixed (byte* res = result)
+            resultBaseRef = 4;
+
+            int x = 0;
+            for (; x < bytesPerPixel; /* Note: ++x happens in the body to avoid one add operation */)
             {
-                res[0] = 4;
-
-                for (int x = 0; x < scanline.Length; x++)
-                {
-                    byte left = (x - bytesPerPixel < 0) ? (byte)0 : scan[x - bytesPerPixel];
-                    byte above = prev[x];
-                    byte upperLeft = (x - bytesPerPixel < 0) ? (byte)0 : prev[x - bytesPerPixel];
-
-                    res[x + 1] = (byte)((scan[x] - PaethPredicator(left, above, upperLeft)) % 256);
-                }
+                byte scan = Unsafe.Add(ref scanBaseRef, x);
+                byte above = Unsafe.Add(ref prevBaseRef, x);
+                ++x;
+                ref byte res = ref Unsafe.Add(ref resultBaseRef, x);
+                res = (byte)(scan - PaethPredictor(0, above, 0));
+                sum += ImageMaths.FastAbs(unchecked((sbyte)res));
             }
+
+            for (int xLeft = x - bytesPerPixel; x < scanline.Length; ++xLeft /* Note: ++x happens in the body to avoid one add operation */)
+            {
+                byte scan = Unsafe.Add(ref scanBaseRef, x);
+                byte left = Unsafe.Add(ref scanBaseRef, xLeft);
+                byte above = Unsafe.Add(ref prevBaseRef, x);
+                byte upperLeft = Unsafe.Add(ref prevBaseRef, xLeft);
+                ++x;
+                ref byte res = ref Unsafe.Add(ref resultBaseRef, x);
+                res = (byte)(scan - PaethPredictor(left, above, upperLeft));
+                sum += ImageMaths.FastAbs(unchecked((sbyte)res));
+            }
+
+            sum -= 4;
         }
 
         /// <summary>
@@ -80,7 +108,7 @@ namespace ImageSharp.Formats
         /// The <see cref="byte"/>.
         /// </returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte PaethPredicator(byte left, byte above, byte upperLeft)
+        private static byte PaethPredictor(byte left, byte above, byte upperLeft)
         {
             int p = left + above - upperLeft;
             int pa = ImageMaths.FastAbs(p - left);

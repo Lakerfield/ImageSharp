@@ -1,9 +1,9 @@
-namespace ImageSharp.Benchmarks.General.Vectorization
+using System.Numerics;
+
+using BenchmarkDotNet.Attributes;
+
+namespace SixLabors.ImageSharp.Benchmarks.General.Vectorization
 {
-    using System.Numerics;
-
-    using BenchmarkDotNet.Attributes;
-
     public class MulFloat
     {
         private float[] input;
@@ -15,7 +15,7 @@ namespace ImageSharp.Benchmarks.General.Vectorization
 
         private float testValue;
 
-        [Setup]
+        [GlobalSetup]
         public void Setup()
         {
             this.input = new float[this.InputSize];
@@ -24,7 +24,7 @@ namespace ImageSharp.Benchmarks.General.Vectorization
 
             for (int i = 0; i < this.InputSize; i++)
             {
-                this.input[i] = (uint)i;
+                this.input[i] = i;
             }
         }
 
@@ -39,9 +39,22 @@ namespace ImageSharp.Benchmarks.General.Vectorization
         }
 
         [Benchmark]
-        public void Simd()
+        public void SimdMultiplyByVector()
         {
             Vector<float> v = new Vector<float>(this.testValue);
+
+            for (int i = 0; i < this.input.Length; i += Vector<uint>.Count)
+            {
+                Vector<float> a = new Vector<float>(this.input, i);
+                a = a * v;
+                a.CopyTo(this.result, i);
+            }
+        }
+
+        [Benchmark]
+        public void SimdMultiplyByScalar()
+        {
+            float v = this.testValue;
 
             for (int i = 0; i < this.input.Length; i += Vector<uint>.Count)
             {

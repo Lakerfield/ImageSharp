@@ -1,21 +1,19 @@
-﻿// <copyright file="ExifTagDescriptionAttribute.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp
+using System;
+using System.Reflection;
+
+namespace SixLabors.ImageSharp.Metadata.Profiles.Exif
 {
-    using System;
-    using System.Reflection;
-
     /// <summary>
     /// Class that provides a description for an ExifTag value.
     /// </summary>
     [AttributeUsage(AttributeTargets.Field, AllowMultiple = true)]
     internal sealed class ExifTagDescriptionAttribute : Attribute
     {
-        private object value;
-        private string description;
+        private readonly object value;
+        private readonly string description;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ExifTagDescriptionAttribute"/> class.
@@ -39,7 +37,8 @@ namespace ImageSharp
         public static string GetDescription(ExifTag tag, object value)
         {
             FieldInfo field = tag.GetType().GetTypeInfo().GetDeclaredField(tag.ToString());
-            if (field == null)
+
+            if (field is null)
             {
                 return null;
             }

@@ -1,40 +1,40 @@
-﻿// <copyright file="GifEncoder.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System.IO;
+using System.Text;
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing.Processors.Quantization;
+
+namespace SixLabors.ImageSharp.Formats.Gif
 {
-    using System;
-    using System.IO;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
     /// Image encoder for writing image data to a stream in gif format.
     /// </summary>
-    public class GifEncoder : IImageEncoder
+    public sealed class GifEncoder : IImageEncoder, IGifEncoderOptions
     {
-        /// <inheritdoc/>
-        public void Encode<TPixel>(Image<TPixel> image, Stream stream, IEncoderOptions options)
-            where TPixel : struct, IPixel<TPixel>
-        {
-            IGifEncoderOptions gifOptions = GifEncoderOptions.Create(options);
-
-            this.Encode(image, stream, gifOptions);
-        }
+        /// <summary>
+        /// Gets or sets the encoding that should be used when writing comments.
+        /// </summary>
+        public Encoding TextEncoding { get; set; } = GifConstants.DefaultEncoding;
 
         /// <summary>
-        /// Encodes the image to the specified stream from the <see cref="Image{TPixel}"/>.
+        /// Gets or sets the quantizer for reducing the color count.
+        /// Defaults to the <see cref="OctreeQuantizer"/>
         /// </summary>
-        /// <typeparam name="TPixel">The pixel format.</typeparam>
-        /// <param name="image">The <see cref="Image{TPixel}"/> to encode from.</param>
-        /// <param name="stream">The <see cref="Stream"/> to encode the image data to.</param>
-        /// <param name="options">The options for the encoder.</param>
-        public void Encode<TPixel>(Image<TPixel> image, Stream stream, IGifEncoderOptions options)
+        public IQuantizer Quantizer { get; set; } = new OctreeQuantizer();
+
+        /// <summary>
+        /// Gets or sets the color table mode: Global or local.
+        /// </summary>
+        public GifColorTableMode? ColorTableMode { get; set; }
+
+        /// <inheritdoc/>
+        public void Encode<TPixel>(Image<TPixel> image, Stream stream)
             where TPixel : struct, IPixel<TPixel>
         {
-            GifEncoderCore encoder = new GifEncoderCore(options);
+            var encoder = new GifEncoderCore(image.GetConfiguration().MemoryAllocator, this);
             encoder.Encode(image, stream);
         }
     }

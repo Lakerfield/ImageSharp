@@ -1,45 +1,40 @@
-﻿// <copyright file="GifFormat.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System.Collections.Generic;
+
+namespace SixLabors.ImageSharp.Formats.Gif
 {
-    using System.Collections.Generic;
-
     /// <summary>
-    /// Encapsulates the means to encode and decode gif images.
+    /// Registers the image encoders, decoders and mime type detectors for the gif format.
     /// </summary>
-    public class GifFormat : IImageFormat
+    public sealed class GifFormat : IImageFormat<GifMetadata, GifFrameMetadata>
     {
-        /// <inheritdoc/>
-        public string Extension => "gif";
-
-        /// <inheritdoc/>
-        public string MimeType => "image/gif";
-
-        /// <inheritdoc/>
-        public IEnumerable<string> SupportedExtensions => new string[] { "gif" };
-
-        /// <inheritdoc/>
-        public IImageDecoder Decoder => new GifDecoder();
-
-        /// <inheritdoc/>
-        public IImageEncoder Encoder => new GifEncoder();
-
-        /// <inheritdoc/>
-        public int HeaderSize => 6;
-
-        /// <inheritdoc/>
-        public bool IsSupportedFileFormat(byte[] header)
+        private GifFormat()
         {
-            return header.Length >= this.HeaderSize &&
-                   header[0] == 0x47 && // G
-                   header[1] == 0x49 && // I
-                   header[2] == 0x46 && // F
-                   header[3] == 0x38 && // 8
-                  (header[4] == 0x39 || header[4] == 0x37) && // 9 or 7
-                   header[5] == 0x61;   // a
         }
+
+        /// <summary>
+        /// Gets the current instance.
+        /// </summary>
+        public static GifFormat Instance { get; } = new GifFormat();
+
+        /// <inheritdoc/>
+        public string Name => "GIF";
+
+        /// <inheritdoc/>
+        public string DefaultMimeType => "image/gif";
+
+        /// <inheritdoc/>
+        public IEnumerable<string> MimeTypes => GifConstants.MimeTypes;
+
+        /// <inheritdoc/>
+        public IEnumerable<string> FileExtensions => GifConstants.FileExtensions;
+
+        /// <inheritdoc/>
+        public GifMetadata CreateDefaultFormatMetadata() => new GifMetadata();
+
+        /// <inheritdoc/>
+        public GifFrameMetadata CreateDefaultFormatFrameMetadata() => new GifFrameMetadata();
     }
 }

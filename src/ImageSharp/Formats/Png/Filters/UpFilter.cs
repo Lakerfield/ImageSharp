@@ -1,38 +1,38 @@
-﻿// <copyright file="UpFilter.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+namespace SixLabors.ImageSharp.Formats.Png.Filters
 {
-    using System.Runtime.CompilerServices;
-
     /// <summary>
     /// The Up filter is just like the Sub filter except that the pixel immediately above the current pixel,
     /// rather than just to its left, is used as the predictor.
     /// <see href="https://www.w3.org/TR/PNG-Filters.html"/>
     /// </summary>
-    internal static unsafe class UpFilter
+    internal static class UpFilter
     {
         /// <summary>
         /// Decodes the scanline
         /// </summary>
         /// <param name="scanline">The scanline to decode</param>
         /// <param name="previousScanline">The previous scanline.</param>
-        /// <param name="bytesPerScanline">The number of bytes per scanline</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Decode(byte[] scanline, byte[] previousScanline, int bytesPerScanline)
+        public static void Decode(Span<byte> scanline, Span<byte> previousScanline)
         {
-            // Up(x) + Prior(x)
-            fixed (byte* scan = scanline)
-            fixed (byte* prev = previousScanline)
-            {
-                for (int x = 1; x < bytesPerScanline; x++)
-                {
-                    byte above = prev[x];
+            DebugGuard.MustBeSameSized(scanline, previousScanline, nameof(scanline));
 
-                    scan[x] = (byte)((scan[x] + above) % 256);
-                }
+            ref byte scanBaseRef = ref MemoryMarshal.GetReference(scanline);
+            ref byte prevBaseRef = ref MemoryMarshal.GetReference(previousScanline);
+
+            // Up(x) + Prior(x)
+            for (int x = 1; x < scanline.Length; x++)
+            {
+                ref byte scan = ref Unsafe.Add(ref scanBaseRef, x);
+                byte above = Unsafe.Add(ref prevBaseRef, x);
+                scan = (byte)(scan + above);
             }
         }
 
@@ -42,23 +42,32 @@ namespace ImageSharp.Formats
         /// <param name="scanline">The scanline to encode</param>
         /// <param name="previousScanline">The previous scanline.</param>
         /// <param name="result">The filtered scanline result.</param>
+        /// <param name="sum">The sum of the total variance of the filtered row</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Encode(byte[] scanline, byte[] previousScanline, byte[] result)
+        public static void Encode(Span<byte> scanline, Span<byte> previousScanline, Span<byte> result, out int sum)
         {
+            DebugGuard.MustBeSameSized(scanline, previousScanline, nameof(scanline));
+            DebugGuard.MustBeSizedAtLeast(result, scanline, nameof(result));
+
+            ref byte scanBaseRef = ref MemoryMarshal.GetReference(scanline);
+            ref byte prevBaseRef = ref MemoryMarshal.GetReference(previousScanline);
+            ref byte resultBaseRef = ref MemoryMarshal.GetReference(result);
+            sum = 0;
+
             // Up(x) = Raw(x) - Prior(x)
-            fixed (byte* scan = scanline)
-            fixed (byte* prev = previousScanline)
-            fixed (byte* res = result)
+            resultBaseRef = 2;
+
+            for (int x = 0; x < scanline.Length; /* Note: ++x happens in the body to avoid one add operation */)
             {
-                res[0] = 2;
-
-                for (int x = 0; x < scanline.Length; x++)
-                {
-                    byte above = prev[x];
-
-                    res[x + 1] = (byte)((scan[x] - above) % 256);
-                }
+                byte scan = Unsafe.Add(ref scanBaseRef, x);
+                byte above = Unsafe.Add(ref prevBaseRef, x);
+                ++x;
+                ref byte res = ref Unsafe.Add(ref resultBaseRef, x);
+                res = (byte)(scan - above);
+                sum += ImageMaths.FastAbs(unchecked((sbyte)res));
             }
+
+            sum -= 2;
         }
     }
 }

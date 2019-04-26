@@ -1,34 +1,35 @@
-﻿// <copyright file="DetectEdges.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Benchmarks
+using SixLabors.ImageSharp.PixelFormats;
+
+namespace SixLabors.ImageSharp.Benchmarks
 {
     using System.IO;
 
     using BenchmarkDotNet.Attributes;
 
+    using SixLabors.ImageSharp.Processing;
+
     using CoreImage = ImageSharp.Image;
-    using Processing;
 
     public class DetectEdges : BenchmarkBase
     {
-        private CoreImage image;
+        private Image<Rgba32> image;
 
-        [Setup]
+        [GlobalSetup]
         public void ReadImage()
         {
             if (this.image == null)
             {
                 using (FileStream stream = File.OpenRead("../ImageSharp.Tests/TestImages/Formats/Bmp/Car.bmp"))
                 {
-                    this.image = CoreImage.Load(stream);
+                    this.image = CoreImage.Load<Rgba32>(stream);
                 }
             }
         }
 
-        [Cleanup]
+        [GlobalCleanup]
         public void Cleanup()
         {
             this.image.Dispose();
@@ -37,17 +38,17 @@ namespace ImageSharp.Benchmarks
         [Benchmark(Description = "ImageSharp DetectEdges")]
         public void ImageProcessorCoreDetectEdges()
         {
-            this.image.DetectEdges(EdgeDetection.Kayyali);
-            this.image.DetectEdges(EdgeDetection.Kayyali);
-            this.image.DetectEdges(EdgeDetection.Kirsch);
-            this.image.DetectEdges(EdgeDetection.Lapacian3X3);
-            this.image.DetectEdges(EdgeDetection.Lapacian5X5);
-            this.image.DetectEdges(EdgeDetection.LaplacianOfGaussian);
-            this.image.DetectEdges(EdgeDetection.Prewitt);
-            this.image.DetectEdges(EdgeDetection.RobertsCross);
-            this.image.DetectEdges(EdgeDetection.Robinson);
-            this.image.DetectEdges(EdgeDetection.Scharr);
-            this.image.DetectEdges(EdgeDetection.Sobel);
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.Kayyali));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.Kayyali));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.Kirsch));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.Laplacian3x3));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.Laplacian5x5));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.LaplacianOfGaussian));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.Prewitt));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.RobertsCross));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.Robinson));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.Scharr));
+            this.image.Mutate(x => x.DetectEdges(EdgeDetectionOperators.Sobel));
         }
     }
 }

@@ -1,42 +1,45 @@
-﻿// <copyright file="IPngEncoderOptions.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using SixLabors.ImageSharp.Processing.Processors.Quantization;
+
+namespace SixLabors.ImageSharp.Formats.Png
 {
-    using Quantizers;
-
     /// <summary>
-    /// Encapsulates the options for the <see cref="PngEncoder"/>.
+    /// The options available for manipulating the encoder pipeline
     /// </summary>
-    public interface IPngEncoderOptions : IEncoderOptions
+    internal interface IPngEncoderOptions
     {
         /// <summary>
-        /// Gets the quality of output for images.
+        /// Gets the number of bits per sample or per palette index (not per pixel).
+        /// Not all values are allowed for all <see cref="ColorType"/> values.
         /// </summary>
-        int Quality { get; }
+        PngBitDepth? BitDepth { get; }
 
         /// <summary>
-        /// Gets the png color type
+        /// Gets the color type
         /// </summary>
-        PngColorType PngColorType { get; }
+        PngColorType? ColorType { get; }
+
+        /// <summary>
+        /// Gets the filter method.
+        /// </summary>
+        PngFilterMethod? FilterMethod { get; }
 
         /// <summary>
         /// Gets the compression level 1-9.
+        /// <remarks>Defaults to 6.</remarks>
         /// </summary>
         int CompressionLevel { get; }
 
         /// <summary>
-        /// Gets the gamma value, that will be written
-        /// the the stream, when the <see cref="WriteGamma"/> property
-        /// is set to true.
+        /// Gets the gamma value, that will be written the the image.
         /// </summary>
         /// <value>The gamma value of the image.</value>
-        float Gamma { get; }
+        float? Gamma { get; }
 
         /// <summary>
-        /// Gets quantizer for reducing the color count.
+        /// Gets the quantizer for reducing the color count.
         /// </summary>
         IQuantizer Quantizer { get; }
 
@@ -44,11 +47,5 @@ namespace ImageSharp.Formats
         /// Gets the transparency threshold.
         /// </summary>
         byte Threshold { get; }
-
-        /// <summary>
-        /// Gets a value indicating whether this instance should write
-        /// gamma information to the stream.
-        /// </summary>
-        bool WriteGamma { get; }
     }
 }

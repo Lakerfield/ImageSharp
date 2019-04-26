@@ -1,7 +1,8 @@
-﻿namespace ImageSharp.Benchmarks
-{
-    using ImageSharp.Formats;
+﻿// Copyright (c) Six Labors and contributors.
+// Licensed under the Apache License, Version 2.0.
 
+namespace SixLabors.ImageSharp.Benchmarks
+{
     /// <summary>
     /// The image benchmark base class.
     /// </summary>
@@ -13,10 +14,6 @@
         protected BenchmarkBase()
         {
             // Add Image Formats
-            Configuration.Default.AddImageFormat(new JpegFormat());
-            Configuration.Default.AddImageFormat(new PngFormat());
-            Configuration.Default.AddImageFormat(new BmpFormat());
-            Configuration.Default.AddImageFormat(new GifFormat());
         }
     }
 }

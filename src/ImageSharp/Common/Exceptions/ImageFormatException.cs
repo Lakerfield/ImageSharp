@@ -1,25 +1,16 @@
-﻿// <copyright file="ImageFormatException.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp
+using System;
+
+namespace SixLabors.ImageSharp
 {
-    using System;
-
     /// <summary>
     /// The exception that is thrown when the library tries to load
     /// an image, which has an invalid format.
     /// </summary>
-    public class ImageFormatException : Exception
+    public sealed class ImageFormatException : Exception
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ImageFormatException"/> class.
-        /// </summary>
-        public ImageFormatException()
-        {
-        }
-
         /// <summary>
         /// Initializes a new instance of the <see cref="ImageFormatException"/> class with the name of the
         /// parameter that causes this exception.

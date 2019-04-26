@@ -1,17 +1,13 @@
-﻿// <copyright file="TestImage.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+
+namespace SixLabors.ImageSharp.Tests
 {
-    using System;
-    using System.Collections.Concurrent;
-    using System.Collections.Generic;
-    using System.IO;
-    using System.Linq;
-    using System.Reflection;
-
     /// <summary>
     /// A test image file.
     /// </summary>
@@ -35,7 +31,7 @@ namespace ImageSharp.Tests
         {
             return Path.Combine(FormatsDirectory, file);
         }
-        
+
         /// <summary>
         /// Gets the correct path to the formats directory.
         /// </summary>
@@ -44,7 +40,7 @@ namespace ImageSharp.Tests
         /// </returns>
         private static string GetFontsDirectory()
         {
-            List<string> directories = new List< string > {
+            List<string> directories = new List<string> {
                  "TestFonts/", // Here for code coverage tests.
                   "tests/ImageSharp.Tests/TestFonts/", // from travis/build script
                   "../../../../../ImageSharp.Tests/TestFonts/", // from Sandbox46
@@ -60,7 +56,7 @@ namespace ImageSharp.Tests
 
             string directory = directories.FirstOrDefault(x => Directory.Exists(x));
 
-            if(directory  != null)
+            if (directory != null)
             {
                 return directory;
             }

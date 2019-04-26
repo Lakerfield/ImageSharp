@@ -1,24 +1,15 @@
-﻿// <copyright file="ImageProcessingException.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp
+using System;
+
+namespace SixLabors.ImageSharp
 {
-    using System;
-
     /// <summary>
     /// The exception that is thrown when an error occurs when applying a process to an image.
     /// </summary>
-    public class ImageProcessingException : Exception
+    public sealed class ImageProcessingException : Exception
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ImageProcessingException"/> class.
-        /// </summary>
-        public ImageProcessingException()
-        {
-        }
-
         /// <summary>
         /// Initializes a new instance of the <see cref="ImageProcessingException"/> class with the name of the
         /// parameter that causes this exception.

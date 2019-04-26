@@ -1,14 +1,17 @@
-﻿// <copyright file="LzwDecoder.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System;
+using System.Buffers;
+using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+using SixLabors.ImageSharp.Memory;
+using SixLabors.Memory;
+
+namespace SixLabors.ImageSharp.Formats.Gif
 {
-    using System;
-    using System.Buffers;
-    using System.IO;
-
     /// <summary>
     /// Decompresses and decodes data using the dynamic LZW algorithms.
     /// </summary>
@@ -32,50 +35,32 @@ namespace ImageSharp.Formats
         /// <summary>
         /// The prefix buffer.
         /// </summary>
-        private readonly int[] prefix;
+        private readonly IMemoryOwner<int> prefix;
 
         /// <summary>
         /// The suffix buffer.
         /// </summary>
-        private readonly int[] suffix;
+        private readonly IMemoryOwner<int> suffix;
 
         /// <summary>
         /// The pixel stack buffer.
         /// </summary>
-        private readonly int[] pixelStack;
-
-        /// <summary>
-        /// A value indicating whether this instance of the given entity has been disposed.
-        /// </summary>
-        /// <value><see langword="true"/> if this instance has been disposed; otherwise, <see langword="false"/>.</value>
-        /// <remarks>
-        /// If the entity is disposed, it must not be disposed a second
-        /// time. The isDisposed field is set the first time the entity
-        /// is disposed. If the isDisposed field is true, then the Dispose()
-        /// method will not dispose again. This help not to prolong the entity's
-        /// life in the Garbage Collector.
-        /// </remarks>
-        private bool isDisposed;
+        private readonly IMemoryOwner<int> pixelStack;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LzwDecoder"/> class
         /// and sets the stream, where the compressed data should be read from.
         /// </summary>
+        /// <param name="memoryAllocator">The <see cref="MemoryAllocator"/> to use for buffer allocations.</param>
         /// <param name="stream">The stream to read from.</param>
         /// <exception cref="System.ArgumentNullException"><paramref name="stream"/> is null.</exception>
-        public LzwDecoder(Stream stream)
+        public LzwDecoder(MemoryAllocator memoryAllocator, Stream stream)
         {
-            Guard.NotNull(stream, nameof(stream));
+            this.stream = stream ?? throw new ArgumentNullException(nameof(stream));
 
-            this.stream = stream;
-
-            this.prefix = ArrayPool<int>.Shared.Rent(MaxStackSize);
-            this.suffix = ArrayPool<int>.Shared.Rent(MaxStackSize);
-            this.pixelStack = ArrayPool<int>.Shared.Rent(MaxStackSize + 1);
-
-            Array.Clear(this.prefix, 0, MaxStackSize);
-            Array.Clear(this.suffix, 0, MaxStackSize);
-            Array.Clear(this.pixelStack, 0, MaxStackSize + 1);
+            this.prefix = memoryAllocator.Allocate<int>(MaxStackSize, AllocationOptions.Clean);
+            this.suffix = memoryAllocator.Allocate<int>(MaxStackSize, AllocationOptions.Clean);
+            this.pixelStack = memoryAllocator.Allocate<int>(MaxStackSize + 1, AllocationOptions.Clean);
         }
 
         /// <summary>
@@ -85,7 +70,7 @@ namespace ImageSharp.Formats
         /// <param name="height">The height of the pixel index array.</param>
         /// <param name="dataSize">Size of the data.</param>
         /// <param name="pixels">The pixel array to decode to.</param>
-        public void DecodePixels(int width, int height, int dataSize, byte[] pixels)
+        public void DecodePixels(int width, int height, int dataSize, Span<byte> pixels)
         {
             Guard.MustBeLessThan(dataSize, int.MaxValue, nameof(dataSize));
 
@@ -118,13 +103,22 @@ namespace ImageSharp.Formats
             int data = 0;
             int first = 0;
 
+            ref int prefixRef = ref MemoryMarshal.GetReference(this.prefix.GetSpan());
+            ref int suffixRef = ref MemoryMarshal.GetReference(this.suffix.GetSpan());
+            ref int pixelStackRef = ref MemoryMarshal.GetReference(this.pixelStack.GetSpan());
+            ref byte pixelsRef = ref MemoryMarshal.GetReference(pixels);
+
             for (code = 0; code < clearCode; code++)
             {
-                this.prefix[code] = 0;
-                this.suffix[code] = (byte)code;
+                Unsafe.Add(ref suffixRef, code) = (byte)code;
             }
 
+#if NETCOREAPP2_1
+            Span<byte> buffer = stackalloc byte[255];
+#else
             byte[] buffer = new byte[255];
+#endif
+
             while (xyz < length)
             {
                 if (top == 0)
@@ -175,7 +169,7 @@ namespace ImageSharp.Formats
 
                     if (oldCode == NullCode)
                     {
-                        this.pixelStack[top++] = this.suffix[code];
+                        Unsafe.Add(ref pixelStackRef, top++) = Unsafe.Add(ref suffixRef, code);
                         oldCode = code;
                         first = code;
                         continue;
@@ -184,27 +178,27 @@ namespace ImageSharp.Formats
                     int inCode = code;
                     if (code == availableCode)
                     {
-                        this.pixelStack[top++] = (byte)first;
+                        Unsafe.Add(ref pixelStackRef, top++) = (byte)first;
 
                         code = oldCode;
                     }
 
                     while (code > clearCode)
                     {
-                        this.pixelStack[top++] = this.suffix[code];
-                        code = this.prefix[code];
+                        Unsafe.Add(ref pixelStackRef, top++) = Unsafe.Add(ref suffixRef, code);
+                        code = Unsafe.Add(ref prefixRef, code);
                     }
 
-                    first = this.suffix[code];
-
-                    this.pixelStack[top++] = this.suffix[code];
+                    int suffixCode = Unsafe.Add(ref suffixRef, code);
+                    first = suffixCode;
+                    Unsafe.Add(ref pixelStackRef, top++) = suffixCode;
 
                     // Fix for Gifs that have "deferred clear code" as per here :
                     // https://bugzilla.mozilla.org/show_bug.cgi?id=55918
                     if (availableCode < MaxStackSize)
                     {
-                        this.prefix[availableCode] = oldCode;
-                        this.suffix[availableCode] = first;
+                        Unsafe.Add(ref prefixRef, availableCode) = oldCode;
+                        Unsafe.Add(ref suffixRef, availableCode) = first;
                         availableCode++;
                         if (availableCode == codeMask + 1 && availableCode < MaxStackSize)
                         {
@@ -220,15 +214,8 @@ namespace ImageSharp.Formats
                 top--;
 
                 // Clear missing pixels
-                pixels[xyz++] = (byte)this.pixelStack[top];
+                Unsafe.Add(ref pixelsRef, xyz++) = (byte)Unsafe.Add(ref pixelStackRef, top);
             }
-        }
-
-        /// <inheritdoc />
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-            this.Dispose(true);
         }
 
         /// <summary>
@@ -237,39 +224,33 @@ namespace ImageSharp.Formats
         /// </summary>
         /// <param name="buffer">The buffer to store the block in.</param>
         /// <returns>
-        /// The <see cref="T:byte[]"/>.
+        /// The <see cref="int"/>.
         /// </returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NETCOREAPP2_1
+        private int ReadBlock(Span<byte> buffer)
+#else
         private int ReadBlock(byte[] buffer)
+#endif
         {
             int bufferSize = this.stream.ReadByte();
+
             if (bufferSize < 1)
             {
                 return 0;
             }
 
             int count = this.stream.Read(buffer, 0, bufferSize);
+
             return count != bufferSize ? 0 : bufferSize;
         }
 
-        /// <summary>
-        /// Disposes the object and frees resources for the Garbage Collector.
-        /// </summary>
-        /// <param name="disposing">If true, the object gets disposed.</param>
-        private void Dispose(bool disposing)
+        /// <inheritdoc />
+        public void Dispose()
         {
-            if (this.isDisposed)
-            {
-                return;
-            }
-
-            if (disposing)
-            {
-                ArrayPool<int>.Shared.Return(this.prefix);
-                ArrayPool<int>.Shared.Return(this.suffix);
-                ArrayPool<int>.Shared.Return(this.pixelStack);
-            }
-
-            this.isDisposed = true;
+            this.prefix.Dispose();
+            this.suffix.Dispose();
+            this.pixelStack.Dispose();
         }
     }
 }

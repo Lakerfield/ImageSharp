@@ -1,38 +1,30 @@
-﻿// <copyright file="Configuration.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp
+using System;
+using System.Collections.Generic;
+using SixLabors.ImageSharp.Formats;
+using SixLabors.ImageSharp.Formats.Bmp;
+using SixLabors.ImageSharp.Formats.Gif;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.IO;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.Memory;
+
+namespace SixLabors.ImageSharp
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Collections.ObjectModel;
-    using System.Linq;
-    using System.Threading.Tasks;
-
-    using Formats;
-    using ImageSharp.IO;
-
     /// <summary>
-    /// Provides initialization code which allows extending the library.
+    /// Provides configuration code which allows altering default behaviour or extending the library.
     /// </summary>
-    public class Configuration
+    public sealed class Configuration
     {
         /// <summary>
         /// A lazily initialized configuration default instance.
         /// </summary>
-        private static readonly Lazy<Configuration> Lazy = new Lazy<Configuration>(() => CreateDefaultInstance());
+        private static readonly Lazy<Configuration> Lazy = new Lazy<Configuration>(CreateDefaultInstance);
 
-        /// <summary>
-        /// An object that can be used to synchronize access to the <see cref="Configuration"/>.
-        /// </summary>
-        private readonly object syncRoot = new object();
-
-        /// <summary>
-        /// The list of supported <see cref="IImageFormat"/>.
-        /// </summary>
-        private readonly List<IImageFormat> imageFormatsList = new List<IImageFormat>();
+        private int maxDegreeOfParallelism = Environment.ProcessorCount;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Configuration" /> class.
@@ -44,12 +36,15 @@ namespace ImageSharp
         /// <summary>
         /// Initializes a new instance of the <see cref="Configuration" /> class.
         /// </summary>
-        /// <param name="providers">The inital set of image formats.</param>
-        public Configuration(params IImageFormat[] providers)
+        /// <param name="configurationModules">A collection of configuration modules to register</param>
+        public Configuration(params IConfigurationModule[] configurationModules)
         {
-            foreach (IImageFormat p in providers)
+            if (configurationModules != null)
             {
-                this.AddImageFormat(p);
+                foreach (IConfigurationModule p in configurationModules)
+                {
+                    p.Configure(this);
+                }
             }
         }
 
@@ -59,148 +54,111 @@ namespace ImageSharp
         public static Configuration Default { get; } = Lazy.Value;
 
         /// <summary>
-        /// Gets the collection of supported <see cref="IImageFormat"/>
+        /// Gets or sets the maximum number of concurrent tasks enabled in ImageSharp algorithms
+        /// configured with this <see cref="Configuration"/> instance.
+        /// Initialized with <see cref="Environment.ProcessorCount"/> by default.
         /// </summary>
-        public IReadOnlyCollection<IImageFormat> ImageFormats => new ReadOnlyCollection<IImageFormat>(this.imageFormatsList);
+        public int MaxDegreeOfParallelism
+        {
+            get => this.maxDegreeOfParallelism;
+            set
+            {
+                if (value <= 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(this.MaxDegreeOfParallelism));
+                }
+
+                this.maxDegreeOfParallelism = value;
+            }
+        }
 
         /// <summary>
-        /// Gets the global parallel options for processing tasks in parallel.
+        /// Gets the currently registered <see cref="IImageFormat"/>s.
         /// </summary>
-        public ParallelOptions ParallelOptions { get; } = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+        public IEnumerable<IImageFormat> ImageFormats => this.ImageFormatsManager.ImageFormats;
 
         /// <summary>
-        /// Gets the maximum header size of all formats.
+        /// Gets or sets the position in a stream to use for reading when using a seekable stream as an image data source.
         /// </summary>
-        internal int MaxHeaderSize { get; private set; }
+        public ReadOrigin ReadOrigin { get; set; } = ReadOrigin.Current;
 
-#if !NETSTANDARD1_1
         /// <summary>
-        /// Gets or sets the fielsystem helper for accessing the local file system.
+        /// Gets or sets the <see cref="ImageFormatManager"/> that is currently in use.
+        /// </summary>
+        public ImageFormatManager ImageFormatsManager { get; set; } = new ImageFormatManager();
+
+        /// <summary>
+        /// Gets or sets the <see cref="MemoryAllocator"/> that is currently in use.
+        /// </summary>
+        public MemoryAllocator MemoryAllocator { get; set; } = ArrayPoolMemoryAllocator.CreateDefault();
+
+        /// <summary>
+        /// Gets the maximum header size of all the formats.
+        /// </summary>
+        internal int MaxHeaderSize => this.ImageFormatsManager.MaxHeaderSize;
+
+        /// <summary>
+        /// Gets or sets the filesystem helper for accessing the local file system.
         /// </summary>
         internal IFileSystem FileSystem { get; set; } = new LocalFileSystem();
-#endif
 
         /// <summary>
-        /// Adds a new <see cref="IImageFormat"/> to the collection of supported image formats.
+        /// Gets or sets the working buffer size hint for image processors.
+        /// The default value is 1MB.
         /// </summary>
-        /// <param name="format">The new format to add.</param>
-        public void AddImageFormat(IImageFormat format)
-        {
-            Guard.NotNull(format, nameof(format));
-            Guard.NotNull(format.Encoder, nameof(format), "The encoder should not be null.");
-            Guard.NotNull(format.Decoder, nameof(format), "The decoder should not be null.");
-            Guard.NotNullOrEmpty(format.MimeType, nameof(format), "The mime type should not be null or empty.");
-            Guard.NotNullOrEmpty(format.Extension, nameof(format), "The extension should not be null or empty.");
-            Guard.NotNullOrEmpty(format.SupportedExtensions, nameof(format), "The supported extensions not be null or empty.");
+        /// <remarks>
+        /// Currently only used by Resize.
+        /// </remarks>
+        internal int WorkingBufferSizeHintInBytes { get; set; } = 1 * 1024 * 1024;
 
-            this.AddImageFormatLocked(format);
+        /// <summary>
+        /// Gets or sets the image operations provider factory.
+        /// </summary>
+        internal IImageProcessingContextFactory ImageOperationsProvider { get; set; } = new DefaultImageOperationsProviderFactory();
+
+        /// <summary>
+        /// Registers a new format provider.
+        /// </summary>
+        /// <param name="configuration">The configuration provider to call configure on.</param>
+        public void Configure(IConfigurationModule configuration)
+        {
+            Guard.NotNull(configuration, nameof(configuration));
+            configuration.Configure(this);
         }
 
         /// <summary>
-        /// Creates the default instance, with Png, Jpeg, Gif and Bmp preregisterd (if they have been referenced)
+        /// Creates a shallow copy of the <see cref="Configuration"/>.
         /// </summary>
-        /// <returns>The default configuration of <see cref="Configuration"/> </returns>
+        /// <returns>A new configuration instance.</returns>
+        public Configuration Clone()
+        {
+            return new Configuration
+            {
+                MaxDegreeOfParallelism = this.MaxDegreeOfParallelism,
+                ImageFormatsManager = this.ImageFormatsManager,
+                MemoryAllocator = this.MemoryAllocator,
+                ImageOperationsProvider = this.ImageOperationsProvider,
+                ReadOrigin = this.ReadOrigin,
+                FileSystem = this.FileSystem,
+                WorkingBufferSizeHintInBytes = this.WorkingBufferSizeHintInBytes,
+            };
+        }
+
+        /// <summary>
+        /// Creates the default instance with the following <see cref="IConfigurationModule"/>s preregistered:
+        /// <see cref="PngConfigurationModule"/>
+        /// <see cref="JpegConfigurationModule"/>
+        /// <see cref="GifConfigurationModule"/>
+        /// <see cref="BmpConfigurationModule"/>.
+        /// </summary>
+        /// <returns>The default configuration of <see cref="Configuration"/>.</returns>
         internal static Configuration CreateDefaultInstance()
         {
-            Configuration config = new Configuration();
-
-            // lets try auto loading the known image formats
-            config.AddImageFormat(new Formats.PngFormat());
-            config.AddImageFormat(new Formats.JpegFormat());
-            config.AddImageFormat(new Formats.GifFormat());
-            config.AddImageFormat(new Formats.BmpFormat());
-            return config;
-        }
-
-        /// <summary>
-        /// Tries the add image format.
-        /// </summary>
-        /// <param name="typeName">Name of the type.</param>
-        /// <returns>True if type discoverd and is a valid <see cref="IImageFormat"/></returns>
-        internal bool TryAddImageFormat(string typeName)
-        {
-            Type type = Type.GetType(typeName, false);
-            if (type != null)
-            {
-                IImageFormat format = Activator.CreateInstance(type) as IImageFormat;
-                if (format != null
-                    && format.Encoder != null
-                    && format.Decoder != null
-                    && !string.IsNullOrEmpty(format.MimeType)
-                    && format.SupportedExtensions?.Any() == true)
-                {
-                    // we can use the locked version as we have already validated in the if.
-                    this.AddImageFormatLocked(format);
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Adds image format. The class is locked to make it thread safe.
-        /// </summary>
-        /// <param name="format">The image format.</param>
-        private void AddImageFormatLocked(IImageFormat format)
-        {
-            lock (this.syncRoot)
-            {
-                if (this.GuardDuplicate(format))
-                {
-                    this.imageFormatsList.Add(format);
-
-                    this.SetMaxHeaderSize();
-                }
-            }
-        }
-
-        /// <summary>
-        /// Checks to ensure duplicate image formats are not added.
-        /// </summary>
-        /// <param name="format">The image format.</param>
-        /// <exception cref="ArgumentException">Thrown if a duplicate is added.</exception>
-        /// <returns>
-        /// The <see cref="bool"/>.
-        /// </returns>
-        private bool GuardDuplicate(IImageFormat format)
-        {
-            if (!format.SupportedExtensions.Contains(format.Extension, StringComparer.OrdinalIgnoreCase))
-            {
-                throw new ArgumentException("The supported extensions should contain the default extension.", nameof(format));
-            }
-
-            // ReSharper disable once ConvertClosureToMethodGroup
-            // Prevents method group allocation
-            if (format.SupportedExtensions.Any(e => string.IsNullOrWhiteSpace(e)))
-            {
-                throw new ArgumentException("The supported extensions should not contain empty values.", nameof(format));
-            }
-
-            // If there is already a format with the same extension or a format that supports that
-            // extension return false.
-            foreach (IImageFormat imageFormat in this.imageFormatsList)
-            {
-                if (imageFormat.Extension.Equals(format.Extension, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                if (imageFormat.SupportedExtensions.Intersect(format.SupportedExtensions, StringComparer.OrdinalIgnoreCase).Any())
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Sets max header size.
-        /// </summary>
-        private void SetMaxHeaderSize()
-        {
-            this.MaxHeaderSize = this.imageFormatsList.Max(x => x.HeaderSize);
+            return new Configuration(
+                new PngConfigurationModule(),
+                new JpegConfigurationModule(),
+                new GifConfigurationModule(),
+                new BmpConfigurationModule());
         }
     }
 }

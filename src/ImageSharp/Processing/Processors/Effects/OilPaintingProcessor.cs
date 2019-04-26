@@ -1,18 +1,19 @@
-﻿// <copyright file="OilPaintingProcessor.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Processing.Processors
+using System;
+using System.Numerics;
+
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.Memory;
+using SixLabors.ImageSharp.ParallelUtils;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.Primitives;
+
+namespace SixLabors.ImageSharp.Processing.Processors.Effects
 {
-    using System;
-    using System.Numerics;
-    using System.Threading.Tasks;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
-    /// An <see cref="IImageProcessor{TPixel}"/> to apply an oil painting effect to an <see cref="Image{TPixel}"/>.
+    /// Applies oil painting effect processing to the image.
     /// </summary>
     /// <remarks>Adapted from <see href="https://softwarebydefault.com/2013/06/29/oil-painting-cartoon-filter/"/> by Dewald Esterhuizen.</remarks>
     /// <typeparam name="TPixel">The pixel format.</typeparam>
@@ -48,112 +49,100 @@ namespace ImageSharp.Processing.Processors
         public int BrushSize { get; }
 
         /// <inheritdoc/>
-        protected override void OnApply(ImageBase<TPixel> source, Rectangle sourceRectangle)
+        protected override void OnFrameApply(
+            ImageFrame<TPixel> source,
+            Rectangle sourceRectangle,
+            Configuration configuration)
         {
+            if (this.BrushSize <= 0 || this.BrushSize > source.Height || this.BrushSize > source.Width)
+            {
+                throw new ArgumentOutOfRangeException(nameof(this.BrushSize));
+            }
+
             int startY = sourceRectangle.Y;
             int endY = sourceRectangle.Bottom;
             int startX = sourceRectangle.X;
             int endX = sourceRectangle.Right;
+            int maxY = endY - 1;
+            int maxX = endX - 1;
+
             int radius = this.BrushSize >> 1;
             int levels = this.Levels;
 
-            // Align start/end positions.
-            int minX = Math.Max(0, startX);
-            int maxX = Math.Min(source.Width, endX);
-            int minY = Math.Max(0, startY);
-            int maxY = Math.Min(source.Height, endY);
-
-            // Reset offset if necessary.
-            if (minX > 0)
+            using (Buffer2D<TPixel> targetPixels = configuration.MemoryAllocator.Allocate2D<TPixel>(source.Size()))
             {
-                startX = 0;
-            }
+                source.CopyTo(targetPixels);
 
-            using (PixelAccessor<TPixel> targetPixels = new PixelAccessor<TPixel>(source.Width, source.Height))
-            using (PixelAccessor<TPixel> sourcePixels = source.Lock())
-            {
-                sourcePixels.CopyTo(targetPixels);
-
-                Parallel.For(
-                    minY,
-                    maxY,
-                    this.ParallelOptions,
-                    y =>
-                    {
-                        for (int x = startX; x < endX; x++)
+                var workingRect = Rectangle.FromLTRB(startX, startY, endX, endY);
+                ParallelHelper.IterateRows(
+                    workingRect,
+                    configuration,
+                    rows =>
                         {
-                            int maxIntensity = 0;
-                            int maxIndex = 0;
-
-                            int[] intensityBin = new int[levels];
-                            float[] redBin = new float[levels];
-                            float[] blueBin = new float[levels];
-                            float[] greenBin = new float[levels];
-
-                            for (int fy = 0; fy <= radius; fy++)
+                            for (int y = rows.Min; y < rows.Max; y++)
                             {
-                                int fyr = fy - radius;
-                                int offsetY = y + fyr;
+                                Span<TPixel> sourceRow = source.GetPixelRowSpan(y);
+                                Span<TPixel> targetRow = targetPixels.GetRowSpan(y);
 
-                                // Skip the current row
-                                if (offsetY < minY)
+                                for (int x = startX; x < endX; x++)
                                 {
-                                    continue;
-                                }
+                                    int maxIntensity = 0;
+                                    int maxIndex = 0;
 
-                                // Outwith the current bounds so break.
-                                if (offsetY >= maxY)
-                                {
-                                    break;
-                                }
+                                    int[] intensityBin = new int[levels];
+                                    float[] redBin = new float[levels];
+                                    float[] blueBin = new float[levels];
+                                    float[] greenBin = new float[levels];
 
-                                for (int fx = 0; fx <= radius; fx++)
-                                {
-                                    int fxr = fx - radius;
-                                    int offsetX = x + fxr;
-
-                                    // Skip the column
-                                    if (offsetX < 0)
+                                    for (int fy = 0; fy <= radius; fy++)
                                     {
-                                        continue;
-                                    }
+                                        int fyr = fy - radius;
+                                        int offsetY = y + fyr;
 
-                                    if (offsetX < maxX)
-                                    {
-                                        // ReSharper disable once AccessToDisposedClosure
-                                        Vector4 color = sourcePixels[offsetX, offsetY].ToVector4();
+                                        offsetY = offsetY.Clamp(0, maxY);
 
-                                        float sourceRed = color.X;
-                                        float sourceBlue = color.Z;
-                                        float sourceGreen = color.Y;
+                                        Span<TPixel> sourceOffsetRow = source.GetPixelRowSpan(offsetY);
 
-                                        int currentIntensity = (int)Math.Round((sourceBlue + sourceGreen + sourceRed) / 3.0 * (levels - 1));
-
-                                        intensityBin[currentIntensity] += 1;
-                                        blueBin[currentIntensity] += sourceBlue;
-                                        greenBin[currentIntensity] += sourceGreen;
-                                        redBin[currentIntensity] += sourceRed;
-
-                                        if (intensityBin[currentIntensity] > maxIntensity)
+                                        for (int fx = 0; fx <= radius; fx++)
                                         {
-                                            maxIntensity = intensityBin[currentIntensity];
-                                            maxIndex = currentIntensity;
+                                            int fxr = fx - radius;
+                                            int offsetX = x + fxr;
+                                            offsetX = offsetX.Clamp(0, maxX);
+
+                                            var vector = sourceOffsetRow[offsetX].ToVector4();
+
+                                            float sourceRed = vector.X;
+                                            float sourceBlue = vector.Z;
+                                            float sourceGreen = vector.Y;
+
+                                            int currentIntensity = (int)MathF.Round(
+                                                (sourceBlue + sourceGreen + sourceRed) / 3F * (levels - 1));
+
+                                            intensityBin[currentIntensity]++;
+                                            blueBin[currentIntensity] += sourceBlue;
+                                            greenBin[currentIntensity] += sourceGreen;
+                                            redBin[currentIntensity] += sourceRed;
+
+                                            if (intensityBin[currentIntensity] > maxIntensity)
+                                            {
+                                                maxIntensity = intensityBin[currentIntensity];
+                                                maxIndex = currentIntensity;
+                                            }
                                         }
+
+                                        float red = MathF.Abs(redBin[maxIndex] / maxIntensity);
+                                        float green = MathF.Abs(greenBin[maxIndex] / maxIntensity);
+                                        float blue = MathF.Abs(blueBin[maxIndex] / maxIntensity);
+
+                                        ref TPixel pixel = ref targetRow[x];
+                                        pixel.FromVector4(
+                                            new Vector4(red, green, blue, sourceRow[x].ToVector4().W));
                                     }
                                 }
-
-                                float red = MathF.Abs(redBin[maxIndex] / maxIntensity);
-                                float green = MathF.Abs(greenBin[maxIndex] / maxIntensity);
-                                float blue = MathF.Abs(blueBin[maxIndex] / maxIntensity);
-
-                                TPixel packed = default(TPixel);
-                                packed.PackFromVector4(new Vector4(red, green, blue, sourcePixels[x, y].ToVector4().W));
-                                targetPixels[x, y] = packed;
                             }
-                        }
-                    });
+                        });
 
-                source.SwapPixelsBuffers(targetPixels);
+                Buffer2D<TPixel>.SwapOrCopyContent(source.PixelBuffer, targetPixels);
             }
         }
     }

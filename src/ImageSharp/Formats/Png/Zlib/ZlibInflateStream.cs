@@ -1,16 +1,24 @@
-﻿namespace ImageSharp.Formats
-{
-    using System;
-    using System.Collections.Generic;
-    using System.IO;
-    using System.IO.Compression;
-    using System.Text;
+﻿// Copyright (c) Six Labors and contributors.
+// Licensed under the Apache License, Version 2.0.
 
+using System;
+using System.IO;
+using System.IO.Compression;
+
+namespace SixLabors.ImageSharp.Formats.Png.Zlib
+{
     /// <summary>
     /// Provides methods and properties for deframing streams from PNGs.
     /// </summary>
-    internal class ZlibInflateStream : Stream
+    internal sealed class ZlibInflateStream : Stream
     {
+        /// <summary>
+        /// Used to read the Adler-32 and Crc-32 checksums
+        /// We don't actually use this for anything so it doesn't
+        /// have to be threadsafe.
+        /// </summary>
+        private static readonly byte[] ChecksumBuffer = new byte[4];
+
         /// <summary>
         /// The inner raw memory stream
         /// </summary>
@@ -35,22 +43,24 @@
         private bool isDisposed;
 
         /// <summary>
-        /// The read crc data.
-        /// </summary>
-        private byte[] crcread;
-
-        /// <summary>
         /// The current data remaining to be read
         /// </summary>
         private int currentDataRemaining;
 
         /// <summary>
+        /// Delegate to get more data once we've exhausted the current data remaining
+        /// </summary>
+        private readonly Func<int> getData;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="ZlibInflateStream"/> class.
         /// </summary>
         /// <param name="innerStream">The inner raw stream</param>
-        public ZlibInflateStream(Stream innerStream)
+        /// <param name="getData">A delegate to get more data from the inner stream</param>
+        public ZlibInflateStream(Stream innerStream, Func<int> getData)
         {
             this.innerStream = innerStream;
+            this.getData = getData;
         }
 
         /// <inheritdoc/>
@@ -80,7 +90,7 @@
         public void AllocateNewBytes(int bytes)
         {
             this.currentDataRemaining = bytes;
-            if (this.compressedStream == null)
+            if (this.compressedStream is null)
             {
                 this.InitializeInflateStream();
             }
@@ -104,12 +114,43 @@
         {
             if (this.currentDataRemaining == 0)
             {
-                return 0;
+                // last buffer was read in its entirety, let's make sure we don't actually have more
+                this.currentDataRemaining = this.getData();
+
+                if (this.currentDataRemaining == 0)
+                {
+                    return 0;
+                }
             }
 
             int bytesToRead = Math.Min(count, this.currentDataRemaining);
             this.currentDataRemaining -= bytesToRead;
-            return this.innerStream.Read(buffer, offset, bytesToRead);
+            int bytesRead = this.innerStream.Read(buffer, offset, bytesToRead);
+            long length = this.innerStream.Length;
+
+            // Keep reading data until we've reached the end of the stream or filled the buffer
+            while (this.currentDataRemaining == 0 && bytesRead < count)
+            {
+                this.currentDataRemaining = this.getData();
+
+                if (this.currentDataRemaining == 0)
+                {
+                    return bytesRead;
+                }
+
+                offset += bytesRead;
+
+                if (offset >= length)
+                {
+                    return bytesRead;
+                }
+
+                bytesToRead = Math.Min(count - bytesRead, this.currentDataRemaining);
+                this.currentDataRemaining -= bytesToRead;
+                bytesRead += this.innerStream.Read(buffer, offset, bytesToRead);
+            }
+
+            return bytesRead;
         }
 
         /// <inheritdoc/>
@@ -145,16 +186,6 @@
                 {
                     this.compressedStream.Dispose();
                     this.compressedStream = null;
-
-                    if (this.crcread == null)
-                    {
-                        // Consume the trailing 4 bytes
-                        this.crcread = new byte[4];
-                        for (int i = 0; i < 4; i++)
-                        {
-                            this.crcread[i] = (byte)this.innerStream.ReadByte();
-                        }
-                    }
                 }
             }
 
@@ -168,11 +199,6 @@
 
         private void InitializeInflateStream()
         {
-            // The DICT dictionary identifier identifying the used dictionary.
-
-            // The preset dictionary.
-            bool fdict;
-
             // Read the zlib header : http://tools.ietf.org/html/rfc1950
             // CMF(Compression Method and flags)
             // This byte is divided into a 4 - bit compression method and a
@@ -192,26 +218,31 @@
                 return;
             }
 
-            if ((cmf & 0x0f) != 8)
+            if ((cmf & 0x0F) == 8)
             {
-                throw new Exception($"Bad compression method for ZLIB header: cmf={cmf}");
+                // CINFO is the base-2 logarithm of the LZ77 window size, minus eight.
+                int cinfo = (cmf & 0xF0) >> 4;
+
+                if (cinfo > 7)
+                {
+                    // Values of CINFO above 7 are not allowed in RFC1950.
+                    // CINFO is not defined in this specification for CM not equal to 8.
+                    throw new ImageFormatException($"Invalid window size for ZLIB header: cinfo={cinfo}");
+                }
+            }
+            else
+            {
+                throw new ImageFormatException($"Bad method for ZLIB header: cmf={cmf}");
             }
 
-            // CINFO is the base-2 logarithm of the LZ77 window size, minus eight.
-            // int cinfo = ((cmf & (0xf0)) >> 8);
-            fdict = (flag & 32) != 0;
-
+            // The preset dictionary.
+            bool fdict = (flag & 32) != 0;
             if (fdict)
             {
-                // The DICT dictionary identifier identifying the used dictionary.
-                byte[] dictId = new byte[4];
-
-                for (int i = 0; i < 4; i++)
-                {
-                    // We consume but don't use this.
-                    dictId[i] = (byte)this.innerStream.ReadByte();
-                    this.currentDataRemaining--;
-                }
+                // We don't need this for inflate so simply skip by the next four bytes.
+                // https://tools.ietf.org/html/rfc1950#page-6
+                this.innerStream.Read(ChecksumBuffer, 0, 4);
+                this.currentDataRemaining -= 4;
             }
 
             // Initialize the deflate Stream.

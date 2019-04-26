@@ -1,9 +1,9 @@
-﻿// <copyright file="IChecksum.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System;
+
+namespace SixLabors.ImageSharp.Formats.Png.Zlib
 {
     /// <summary>
     /// Interface to compute a data checksum used by checked input/output streams.
@@ -12,15 +12,12 @@ namespace ImageSharp.Formats
     /// <code>Value</code>. The complete checksum object can also be reset
     /// so it can be used again with new data.
     /// </summary>
-    public interface IChecksum
+    internal interface IChecksum
     {
         /// <summary>
         /// Gets the data checksum computed so far.
         /// </summary>
-        long Value
-        {
-            get;
-        }
+        long Value { get; }
 
         /// <summary>
         /// Resets the data checksum as if no update was ever called.
@@ -36,25 +33,11 @@ namespace ImageSharp.Formats
         void Update(int value);
 
         /// <summary>
-        /// Updates the data checksum with the bytes taken from the array.
+        /// Updates the data checksum with the bytes taken from the span.
         /// </summary>
-        /// <param name="buffer">
+        /// <param name="data">
         /// buffer an array of bytes
         /// </param>
-        void Update(byte[] buffer);
-
-        /// <summary>
-        /// Adds the byte array to the data checksum.
-        /// </summary>
-        /// <param name = "buffer">
-        /// The buffer which contains the data
-        /// </param>
-        /// <param name = "offset">
-        /// The offset in the buffer where the data starts
-        /// </param>
-        /// <param name = "count">
-        /// the number of data bytes to add.
-        /// </param>
-        void Update(byte[] buffer, int offset, int count);
+        void Update(ReadOnlySpan<byte> data);
     }
 }

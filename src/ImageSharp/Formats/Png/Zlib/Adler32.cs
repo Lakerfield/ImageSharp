@@ -1,12 +1,11 @@
-﻿// <copyright file="Adler32.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System;
+using System.Runtime.CompilerServices;
+
+namespace SixLabors.ImageSharp.Formats.Png.Zlib
 {
-    using System;
-
     /// <summary>
     /// Computes Adler32 checksum for a stream of data. An Adler32
     /// checksum is not as reliable as a CRC32 checksum, but a lot faster to
@@ -76,9 +75,14 @@ namespace ImageSharp.Formats
         }
 
         /// <inheritdoc/>
-        public long Value => this.checksum;
+        public long Value
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => this.checksum;
+        }
 
         /// <inheritdoc/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Reset()
         {
             this.checksum = 1;
@@ -90,6 +94,7 @@ namespace ImageSharp.Formats
         /// <param name="value">
         /// The data value to add. The high byte of the int is ignored.
         /// </param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Update(int value)
         {
             // We could make a length 1 byte array and call update again, but I
@@ -104,47 +109,15 @@ namespace ImageSharp.Formats
         }
 
         /// <inheritdoc/>
-        public void Update(byte[] buffer)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Update(ReadOnlySpan<byte> data)
         {
-            if (buffer == null)
-            {
-                throw new ArgumentNullException(nameof(buffer));
-            }
-
-            this.Update(buffer, 0, buffer.Length);
-        }
-
-        /// <inheritdoc/>
-        public void Update(byte[] buffer, int offset, int count)
-        {
-            if (buffer == null)
-            {
-                throw new ArgumentNullException(nameof(buffer));
-            }
-
-            if (offset < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(offset), "cannot be negative");
-            }
-
-            if (count < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(count), "cannot be negative");
-            }
-
-            if (offset >= buffer.Length)
-            {
-                throw new ArgumentOutOfRangeException(nameof(offset), "not a valid index into buffer");
-            }
-
-            if (offset + count > buffer.Length)
-            {
-                throw new ArgumentOutOfRangeException(nameof(count), "exceeds buffer size");
-            }
-
             // (By Per Bothner)
             uint s1 = this.checksum & 0xFFFF;
             uint s2 = this.checksum >> 16;
+
+            int count = data.Length;
+            int offset = 0;
 
             while (count > 0)
             {
@@ -160,7 +133,7 @@ namespace ImageSharp.Formats
                 count -= n;
                 while (--n >= 0)
                 {
-                    s1 = s1 + (uint)(buffer[offset++] & 0xff);
+                    s1 = s1 + (uint)(data[offset++] & 0xff);
                     s2 = s2 + s1;
                 }
 

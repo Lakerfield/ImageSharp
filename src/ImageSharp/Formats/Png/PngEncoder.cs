@@ -1,27 +1,55 @@
-﻿// <copyright file="PngEncoder.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System.IO;
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing.Processors.Quantization;
+
+namespace SixLabors.ImageSharp.Formats.Png
 {
-    using System.IO;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
     /// Image encoder for writing image data to a stream in png format.
     /// </summary>
-    public class PngEncoder : IImageEncoder
+    public sealed class PngEncoder : IImageEncoder, IPngEncoderOptions
     {
-        /// <inheritdoc/>
-        public void Encode<TPixel>(Image<TPixel> image, Stream stream, IEncoderOptions options)
-            where TPixel : struct, IPixel<TPixel>
-        {
-            IPngEncoderOptions pngOptions = PngEncoderOptions.Create(options);
+        /// <summary>
+        /// Gets or sets the number of bits per sample or per palette index (not per pixel).
+        /// Not all values are allowed for all <see cref="ColorType"/> values.
+        /// </summary>
+        public PngBitDepth? BitDepth { get; set; }
 
-            this.Encode(image, stream, pngOptions);
-        }
+        /// <summary>
+        /// Gets or sets the color type.
+        /// </summary>
+        public PngColorType? ColorType { get; set; }
+
+        /// <summary>
+        /// Gets or sets the filter method.
+        /// </summary>
+        public PngFilterMethod? FilterMethod { get; set; }
+
+        /// <summary>
+        /// Gets or sets the compression level 1-9.
+        /// <remarks>Defaults to 6.</remarks>
+        /// </summary>
+        public int CompressionLevel { get; set; } = 6;
+
+        /// <summary>
+        /// Gets or sets the gamma value, that will be written the the image.
+        /// </summary>
+        public float? Gamma { get; set; }
+
+        /// <summary>
+        /// Gets or sets quantizer for reducing the color count.
+        /// Defaults to the <see cref="WuQuantizer"/>
+        /// </summary>
+        public IQuantizer Quantizer { get; set; }
+
+        /// <summary>
+        /// Gets or sets the transparency threshold.
+        /// </summary>
+        public byte Threshold { get; set; } = 255;
 
         /// <summary>
         /// Encodes the image to the specified stream from the <see cref="Image{TPixel}"/>.
@@ -29,12 +57,13 @@ namespace ImageSharp.Formats
         /// <typeparam name="TPixel">The pixel format.</typeparam>
         /// <param name="image">The <see cref="Image{TPixel}"/> to encode from.</param>
         /// <param name="stream">The <see cref="Stream"/> to encode the image data to.</param>
-        /// <param name="options">The options for the encoder.</param>
-        public void Encode<TPixel>(Image<TPixel> image, Stream stream, IPngEncoderOptions options)
+        public void Encode<TPixel>(Image<TPixel> image, Stream stream)
             where TPixel : struct, IPixel<TPixel>
         {
-            PngEncoderCore encode = new PngEncoderCore(options);
-            encode.Encode(image, stream);
+            using (var encoder = new PngEncoderCore(image.GetMemoryAllocator(), this))
+            {
+                encoder.Encode(image, stream);
+            }
         }
     }
 }

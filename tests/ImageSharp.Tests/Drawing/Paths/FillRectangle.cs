@@ -1,114 +1,93 @@
-﻿
-namespace ImageSharp.Tests.Drawing.Paths
+﻿// Copyright (c) Six Labors and contributors.
+// Licensed under the Apache License, Version 2.0.
+
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Primitives;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Processing.Processors.Drawing;
+using Xunit;
+
+namespace SixLabors.ImageSharp.Tests.Drawing.Paths
 {
-    using System;
-
-    using ImageSharp.Drawing.Brushes;
-
-    using Xunit;
-    using ImageSharp.Drawing;
-    using ImageSharp.Drawing.Processors;
-    using ImageSharp.PixelFormats;
-
-    public class FillRectangle : IDisposable
+    public class FillRectangle : BaseImageOperationsExtensionTest
     {
         GraphicsOptions noneDefault = new GraphicsOptions();
         Rgba32 color = Rgba32.HotPink;
-        SolidBrush brush = Brushes.Solid(Rgba32.HotPink);
-        ImageSharp.Rectangle rectangle = new ImageSharp.Rectangle(10, 10, 77, 76);
-
-        private ProcessorWatchingImage img;
-
-        public FillRectangle()
-        {
-            this.img = new Paths.ProcessorWatchingImage(10, 10);
-        }
-
-        public void Dispose()
-        {
-            img.Dispose();
-        }
+        SolidBrush<Rgba32> brush = Brushes.Solid(Rgba32.HotPink);
+        SixLabors.Primitives.Rectangle rectangle = new SixLabors.Primitives.Rectangle(10, 10, 77, 76);
 
         [Fact]
         public void CorrectlySetsBrushAndRectangle()
         {
-            img.Fill(brush, rectangle);
-
-            Assert.NotEmpty(img.ProcessorApplications);
-            FillRegionProcessor<Rgba32> processor = Assert.IsType<FillRegionProcessor<Rgba32>>(img.ProcessorApplications[0].processor);
+            this.operations.Fill(this.brush, this.rectangle);
+            FillRegionProcessor<Rgba32> processor = this.Verify<FillRegionProcessor<Rgba32>>();
 
             Assert.Equal(GraphicsOptions.Default, processor.Options);
 
             ShapeRegion region = Assert.IsType<ShapeRegion>(processor.Region);
-            SixLabors.Shapes.Rectangle rect = Assert.IsType<SixLabors.Shapes.Rectangle>(region.Shape);
-            Assert.Equal(rect.Location.X, rectangle.X);
-            Assert.Equal(rect.Location.Y, rectangle.Y);
-            Assert.Equal(rect.Size.Width, rectangle.Width);
-            Assert.Equal(rect.Size.Height, rectangle.Height);
-            
-            Assert.Equal(brush, processor.Brush);
+            Shapes.RectangularPolygon rect = Assert.IsType<Shapes.RectangularPolygon>(region.Shape);
+            Assert.Equal(rect.Location.X, this.rectangle.X);
+            Assert.Equal(rect.Location.Y, this.rectangle.Y);
+            Assert.Equal(rect.Size.Width, this.rectangle.Width);
+            Assert.Equal(rect.Size.Height, this.rectangle.Height);
+
+            Assert.Equal(this.brush, processor.Brush);
         }
 
         [Fact]
         public void CorrectlySetsBrushRectangleAndOptions()
         {
-            img.Fill(brush, rectangle, noneDefault);
+            this.operations.Fill(this.noneDefault, this.brush, this.rectangle);
+            FillRegionProcessor<Rgba32> processor = this.Verify<FillRegionProcessor<Rgba32>>();
 
-            Assert.NotEmpty(img.ProcessorApplications);
-            FillRegionProcessor<Rgba32> processor = Assert.IsType<FillRegionProcessor<Rgba32>>(img.ProcessorApplications[0].processor);
-
-            Assert.Equal(noneDefault, processor.Options);
+            Assert.Equal(this.noneDefault, processor.Options);
 
             ShapeRegion region = Assert.IsType<ShapeRegion>(processor.Region);
-            SixLabors.Shapes.Rectangle rect = Assert.IsType<SixLabors.Shapes.Rectangle>(region.Shape);
-            Assert.Equal(rect.Location.X, rectangle.X);
-            Assert.Equal(rect.Location.Y, rectangle.Y);
-            Assert.Equal(rect.Size.Width, rectangle.Width);
-            Assert.Equal(rect.Size.Height, rectangle.Height);
+            Shapes.RectangularPolygon rect = Assert.IsType<Shapes.RectangularPolygon>(region.Shape);
+            Assert.Equal(rect.Location.X, this.rectangle.X);
+            Assert.Equal(rect.Location.Y, this.rectangle.Y);
+            Assert.Equal(rect.Size.Width, this.rectangle.Width);
+            Assert.Equal(rect.Size.Height, this.rectangle.Height);
 
-            Assert.Equal(brush, processor.Brush);
+            Assert.Equal(this.brush, processor.Brush);
         }
 
         [Fact]
         public void CorrectlySetsColorAndRectangle()
         {
-            img.Fill(color, rectangle);
-            
-            Assert.NotEmpty(img.ProcessorApplications);
-            FillRegionProcessor<Rgba32> processor = Assert.IsType<FillRegionProcessor<Rgba32>>(img.ProcessorApplications[0].processor);
+            this.operations.Fill(this.color, this.rectangle);
+            FillRegionProcessor<Rgba32> processor = this.Verify<FillRegionProcessor<Rgba32>>();
 
             Assert.Equal(GraphicsOptions.Default, processor.Options);
 
             ShapeRegion region = Assert.IsType<ShapeRegion>(processor.Region);
-            SixLabors.Shapes.Rectangle rect = Assert.IsType<SixLabors.Shapes.Rectangle>(region.Shape);
-            Assert.Equal(rect.Location.X, rectangle.X);
-            Assert.Equal(rect.Location.Y, rectangle.Y);
-            Assert.Equal(rect.Size.Width, rectangle.Width);
-            Assert.Equal(rect.Size.Height, rectangle.Height);
+            Shapes.RectangularPolygon rect = Assert.IsType<Shapes.RectangularPolygon>(region.Shape);
+            Assert.Equal(rect.Location.X, this.rectangle.X);
+            Assert.Equal(rect.Location.Y, this.rectangle.Y);
+            Assert.Equal(rect.Size.Width, this.rectangle.Width);
+            Assert.Equal(rect.Size.Height, this.rectangle.Height);
 
             SolidBrush<Rgba32> brush = Assert.IsType<SolidBrush<Rgba32>>(processor.Brush);
-            Assert.Equal(color, brush.Color);
+            Assert.Equal(this.color, brush.Color);
         }
 
         [Fact]
         public void CorrectlySetsColorRectangleAndOptions()
         {
-            img.Fill(color, rectangle, noneDefault);
+            this.operations.Fill(this.noneDefault, this.color, this.rectangle);
+            FillRegionProcessor<Rgba32> processor = this.Verify<FillRegionProcessor<Rgba32>>();
 
-            Assert.NotEmpty(img.ProcessorApplications);
-            FillRegionProcessor<Rgba32> processor = Assert.IsType<FillRegionProcessor<Rgba32>>(img.ProcessorApplications[0].processor);
-
-            Assert.Equal(noneDefault, processor.Options);
+            Assert.Equal(this.noneDefault, processor.Options);
 
             ShapeRegion region = Assert.IsType<ShapeRegion>(processor.Region);
-            SixLabors.Shapes.Rectangle rect = Assert.IsType<SixLabors.Shapes.Rectangle>(region.Shape);
-            Assert.Equal(rect.Location.X, rectangle.X);
-            Assert.Equal(rect.Location.Y, rectangle.Y);
-            Assert.Equal(rect.Size.Width, rectangle.Width);
-            Assert.Equal(rect.Size.Height, rectangle.Height);
+            Shapes.RectangularPolygon rect = Assert.IsType<Shapes.RectangularPolygon>(region.Shape);
+            Assert.Equal(rect.Location.X, this.rectangle.X);
+            Assert.Equal(rect.Location.Y, this.rectangle.Y);
+            Assert.Equal(rect.Size.Width, this.rectangle.Width);
+            Assert.Equal(rect.Size.Height, this.rectangle.Height);
 
             SolidBrush<Rgba32> brush = Assert.IsType<SolidBrush<Rgba32>>(processor.Brush);
-            Assert.Equal(color, brush.Color);
+            Assert.Equal(this.color, brush.Color);
         }
     }
 }

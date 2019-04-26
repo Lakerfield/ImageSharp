@@ -1,169 +1,211 @@
-﻿// <copyright file="BmpEncoderCore.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System;
+using System.IO;
+
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.Common.Helpers;
+using SixLabors.ImageSharp.Memory;
+using SixLabors.ImageSharp.Metadata;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.Memory;
+
+namespace SixLabors.ImageSharp.Formats.Bmp
 {
-    using System;
-    using System.IO;
-
-    using ImageSharp.PixelFormats;
-
-    using IO;
-
     /// <summary>
     /// Image encoder for writing an image to a stream as a Windows bitmap.
     /// </summary>
     internal sealed class BmpEncoderCore
     {
         /// <summary>
-        /// The options for the encoder.
-        /// </summary>
-        private readonly IBmpEncoderOptions options;
-
-        /// <summary>
         /// The amount to pad each row by.
         /// </summary>
         private int padding;
 
         /// <summary>
+        /// The mask for the alpha channel of the color for a 32 bit rgba bitmaps.
+        /// </summary>
+        private const int Rgba32AlphaMask = 0xFF << 24;
+
+        /// <summary>
+        /// The mask for the red part of the color for a 32 bit rgba bitmaps.
+        /// </summary>
+        private const int Rgba32RedMask = 0xFF << 16;
+
+        /// <summary>
+        /// The mask for the green part of the color for a 32 bit rgba bitmaps.
+        /// </summary>
+        private const int Rgba32GreenMask = 0xFF << 8;
+
+        /// <summary>
+        /// The mask for the blue part of the color for a 32 bit rgba bitmaps.
+        /// </summary>
+        private const int Rgba32BlueMask = 0xFF;
+
+        private readonly MemoryAllocator memoryAllocator;
+
+        private Configuration configuration;
+
+        private BmpBitsPerPixel? bitsPerPixel;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="BmpEncoderCore"/> class.
         /// </summary>
-        /// <param name="options">The options for the encoder.</param>
-        public BmpEncoderCore(IBmpEncoderOptions options)
+        /// <param name="options">The encoder options</param>
+        /// <param name="memoryAllocator">The memory manager</param>
+        public BmpEncoderCore(IBmpEncoderOptions options, MemoryAllocator memoryAllocator)
         {
-            this.options = options ?? new BmpEncoderOptions();
+            this.memoryAllocator = memoryAllocator;
+            this.bitsPerPixel = options.BitsPerPixel;
         }
 
         /// <summary>
-        /// Encodes the image to the specified stream from the <see cref="ImageBase{TPixel}"/>.
+        /// Encodes the image to the specified stream from the <see cref="ImageFrame{TPixel}"/>.
         /// </summary>
         /// <typeparam name="TPixel">The pixel format.</typeparam>
-        /// <param name="image">The <see cref="ImageBase{TPixel}"/> to encode from.</param>
+        /// <param name="image">The <see cref="ImageFrame{TPixel}"/> to encode from.</param>
         /// <param name="stream">The <see cref="Stream"/> to encode the image data to.</param>
-        public void Encode<TPixel>(ImageBase<TPixel> image, Stream stream)
+        public void Encode<TPixel>(Image<TPixel> image, Stream stream)
             where TPixel : struct, IPixel<TPixel>
         {
             Guard.NotNull(image, nameof(image));
             Guard.NotNull(stream, nameof(stream));
 
-            // Cast to int will get the bytes per pixel
-            short bpp = (short)(8 * (int)this.options.BitsPerPixel);
+            this.configuration = image.GetConfiguration();
+            ImageMetadata metadata = image.Metadata;
+            BmpMetadata bmpMetadata = metadata.GetFormatMetadata(BmpFormat.Instance);
+            this.bitsPerPixel = this.bitsPerPixel ?? bmpMetadata.BitsPerPixel;
+
+            short bpp = (short)this.bitsPerPixel;
             int bytesPerLine = 4 * (((image.Width * bpp) + 31) / 32);
-            this.padding = bytesPerLine - (image.Width * (int)this.options.BitsPerPixel);
+            this.padding = bytesPerLine - (int)(image.Width * (bpp / 8F));
 
-            // Do not use IDisposable pattern here as we want to preserve the stream.
-            EndianBinaryWriter writer = new EndianBinaryWriter(Endianness.LittleEndian, stream);
+            // Set Resolution.
+            int hResolution = 0;
+            int vResolution = 0;
 
-            BmpInfoHeader infoHeader = new BmpInfoHeader
+            if (metadata.ResolutionUnits != PixelResolutionUnit.AspectRatio)
             {
-                HeaderSize = BmpInfoHeader.Size,
-                Height = image.Height,
-                Width = image.Width,
-                BitsPerPixel = bpp,
-                Planes = 1,
-                ImageSize = image.Height * bytesPerLine,
-                ClrUsed = 0,
-                ClrImportant = 0
+                if (metadata.HorizontalResolution > 0 && metadata.VerticalResolution > 0)
+                {
+                    switch (metadata.ResolutionUnits)
+                    {
+                        case PixelResolutionUnit.PixelsPerInch:
+
+                            hResolution = (int)Math.Round(UnitConverter.InchToMeter(metadata.HorizontalResolution));
+                            vResolution = (int)Math.Round(UnitConverter.InchToMeter(metadata.VerticalResolution));
+                            break;
+
+                        case PixelResolutionUnit.PixelsPerCentimeter:
+
+                            hResolution = (int)Math.Round(UnitConverter.CmToMeter(metadata.HorizontalResolution));
+                            vResolution = (int)Math.Round(UnitConverter.CmToMeter(metadata.VerticalResolution));
+                            break;
+
+                        case PixelResolutionUnit.PixelsPerMeter:
+                            hResolution = (int)Math.Round(metadata.HorizontalResolution);
+                            vResolution = (int)Math.Round(metadata.VerticalResolution);
+
+                            break;
+                    }
+                }
+            }
+
+            int infoHeaderSize = BmpInfoHeader.SizeV4;
+            var infoHeader = new BmpInfoHeader(
+                headerSize: infoHeaderSize,
+                height: image.Height,
+                width: image.Width,
+                bitsPerPixel: bpp,
+                planes: 1,
+                imageSize: image.Height * bytesPerLine,
+                clrUsed: 0,
+                clrImportant: 0,
+                xPelsPerMeter: hResolution,
+                yPelsPerMeter: vResolution)
+            {
+                RedMask = Rgba32RedMask,
+                GreenMask = Rgba32GreenMask,
+                BlueMask = Rgba32BlueMask,
+                Compression = BmpCompression.BitFields
             };
 
-            BmpFileHeader fileHeader = new BmpFileHeader
+            if (this.bitsPerPixel == BmpBitsPerPixel.Pixel32)
             {
-                Type = 19778, // BM
-                Offset = 54,
-                FileSize = 54 + infoHeader.ImageSize
-            };
+                infoHeader.AlphaMask = Rgba32AlphaMask;
+            }
 
-            WriteHeader(writer, fileHeader);
-            this.WriteInfo(writer, infoHeader);
-            this.WriteImage(writer, image);
+            var fileHeader = new BmpFileHeader(
+                type: BmpConstants.TypeMarkers.Bitmap,
+                fileSize: BmpFileHeader.Size + infoHeaderSize + infoHeader.ImageSize,
+                reserved: 0,
+                offset: BmpFileHeader.Size + infoHeaderSize);
 
-            writer.Flush();
-        }
+#if NETCOREAPP2_1
+            Span<byte> buffer = stackalloc byte[infoHeaderSize];
+#else
+            byte[] buffer = new byte[infoHeaderSize];
+#endif
+            fileHeader.WriteTo(buffer);
 
-        /// <summary>
-        /// Writes the bitmap header data to the binary stream.
-        /// </summary>
-        /// <param name="writer">
-        /// The <see cref="EndianBinaryWriter"/> containing the stream to write to.
-        /// </param>
-        /// <param name="fileHeader">
-        /// The <see cref="BmpFileHeader"/> containing the header data.
-        /// </param>
-        private static void WriteHeader(EndianBinaryWriter writer, BmpFileHeader fileHeader)
-        {
-            writer.Write(fileHeader.Type);
-            writer.Write(fileHeader.FileSize);
-            writer.Write(fileHeader.Reserved);
-            writer.Write(fileHeader.Offset);
-        }
+            stream.Write(buffer, 0, BmpFileHeader.Size);
 
-        /// <summary>
-        /// Writes the bitmap information to the binary stream.
-        /// </summary>
-        /// <param name="writer">
-        /// The <see cref="EndianBinaryWriter"/> containing the stream to write to.
-        /// </param>
-        /// <param name="infoHeader">
-        /// The <see cref="BmpFileHeader"/> containing the detailed information about the image.
-        /// </param>
-        private void WriteInfo(EndianBinaryWriter writer, BmpInfoHeader infoHeader)
-        {
-            writer.Write(infoHeader.HeaderSize);
-            writer.Write(infoHeader.Width);
-            writer.Write(infoHeader.Height);
-            writer.Write(infoHeader.Planes);
-            writer.Write(infoHeader.BitsPerPixel);
-            writer.Write((int)infoHeader.Compression);
-            writer.Write(infoHeader.ImageSize);
-            writer.Write(infoHeader.XPelsPerMeter);
-            writer.Write(infoHeader.YPelsPerMeter);
-            writer.Write(infoHeader.ClrUsed);
-            writer.Write(infoHeader.ClrImportant);
+            infoHeader.WriteV4Header(buffer);
+
+            stream.Write(buffer, 0, infoHeaderSize);
+
+            this.WriteImage(stream, image.Frames.RootFrame);
+
+            stream.Flush();
         }
 
         /// <summary>
         /// Writes the pixel data to the binary stream.
         /// </summary>
         /// <typeparam name="TPixel">The pixel format.</typeparam>
-        /// <param name="writer">The <see cref="EndianBinaryWriter"/> containing the stream to write to.</param>
+        /// <param name="stream">The <see cref="Stream"/> to write to.</param>
         /// <param name="image">
-        /// The <see cref="ImageBase{TPixel}"/> containing pixel data.
+        /// The <see cref="ImageFrame{TPixel}"/> containing pixel data.
         /// </param>
-        private void WriteImage<TPixel>(EndianBinaryWriter writer, ImageBase<TPixel> image)
+        private void WriteImage<TPixel>(Stream stream, ImageFrame<TPixel> image)
             where TPixel : struct, IPixel<TPixel>
         {
-            using (PixelAccessor<TPixel> pixels = image.Lock())
+            Buffer2D<TPixel> pixels = image.PixelBuffer;
+            switch (this.bitsPerPixel)
             {
-                switch (this.options.BitsPerPixel)
-                {
-                    case BmpBitsPerPixel.Pixel32:
-                        this.Write32Bit(writer, pixels);
-                        break;
+                case BmpBitsPerPixel.Pixel32:
+                    this.Write32Bit(stream, pixels);
+                    break;
 
-                    case BmpBitsPerPixel.Pixel24:
-                        this.Write24Bit(writer, pixels);
-                        break;
-                }
+                case BmpBitsPerPixel.Pixel24:
+                    this.Write24Bit(stream, pixels);
+                    break;
             }
         }
+
+        private IManagedByteBuffer AllocateRow(int width, int bytesPerPixel) => this.memoryAllocator.AllocatePaddedPixelRowBuffer(width, bytesPerPixel, this.padding);
 
         /// <summary>
         /// Writes the 32bit color palette to the stream.
         /// </summary>
         /// <typeparam name="TPixel">The pixel format.</typeparam>
-        /// <param name="writer">The <see cref="EndianBinaryWriter"/> containing the stream to write to.</param>
-        /// <param name="pixels">The <see cref="PixelAccessor{TPixel}"/> containing pixel data.</param>
-        private void Write32Bit<TPixel>(EndianBinaryWriter writer, PixelAccessor<TPixel> pixels)
+        /// <param name="stream">The <see cref="Stream"/> to write to.</param>
+        /// <param name="pixels">The <see cref="Buffer2D{TPixel}"/> containing pixel data.</param>
+        private void Write32Bit<TPixel>(Stream stream, Buffer2D<TPixel> pixels)
             where TPixel : struct, IPixel<TPixel>
         {
-            using (PixelArea<TPixel> row = new PixelArea<TPixel>(pixels.Width, ComponentOrder.Zyxw, this.padding))
+            using (IManagedByteBuffer row = this.AllocateRow(pixels.Width, 4))
             {
                 for (int y = pixels.Height - 1; y >= 0; y--)
                 {
-                    pixels.CopyTo(row, y);
-                    writer.Write(row.Bytes, 0, row.Length);
+                    Span<TPixel> pixelSpan = pixels.GetRowSpan(y);
+                    PixelOperations<TPixel>.Instance.ToBgra32Bytes(
+                        this.configuration,
+                        pixelSpan,
+                        row.GetSpan(),
+                        pixelSpan.Length);
+                    stream.Write(row.Array, 0, row.Length());
                 }
             }
         }
@@ -172,17 +214,22 @@ namespace ImageSharp.Formats
         /// Writes the 24bit color palette to the stream.
         /// </summary>
         /// <typeparam name="TPixel">The pixel format.</typeparam>
-        /// <param name="writer">The <see cref="EndianBinaryWriter"/> containing the stream to write to.</param>
-        /// <param name="pixels">The <see cref="PixelAccessor{TPixel}"/> containing pixel data.</param>
-        private void Write24Bit<TPixel>(EndianBinaryWriter writer, PixelAccessor<TPixel> pixels)
+        /// <param name="stream">The <see cref="Stream"/> to write to.</param>
+        /// <param name="pixels">The <see cref="Buffer2D{TPixel}"/> containing pixel data.</param>
+        private void Write24Bit<TPixel>(Stream stream, Buffer2D<TPixel> pixels)
             where TPixel : struct, IPixel<TPixel>
         {
-            using (PixelArea<TPixel> row = new PixelArea<TPixel>(pixels.Width, ComponentOrder.Zyx, this.padding))
+            using (IManagedByteBuffer row = this.AllocateRow(pixels.Width, 3))
             {
                 for (int y = pixels.Height - 1; y >= 0; y--)
                 {
-                    pixels.CopyTo(row, y);
-                    writer.Write(row.Bytes, 0, row.Length);
+                    Span<TPixel> pixelSpan = pixels.GetRowSpan(y);
+                    PixelOperations<TPixel>.Instance.ToBgr24Bytes(
+                        this.configuration,
+                        pixelSpan,
+                        row.GetSpan(),
+                        pixelSpan.Length);
+                    stream.Write(row.Array, 0, row.Length());
                 }
             }
         }

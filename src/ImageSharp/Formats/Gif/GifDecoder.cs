@@ -1,42 +1,48 @@
-﻿// <copyright file="GifDecoder.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System.IO;
+using System.Text;
+using SixLabors.ImageSharp.Metadata;
+using SixLabors.ImageSharp.PixelFormats;
+
+namespace SixLabors.ImageSharp.Formats.Gif
 {
-    using System;
-    using System.IO;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
     /// Decoder for generating an image out of a gif encoded stream.
     /// </summary>
-    public class GifDecoder : IImageDecoder
+    public sealed class GifDecoder : IImageDecoder, IGifDecoderOptions, IImageInfoDetector
     {
-        /// <inheritdoc/>
-        public Image<TPixel> Decode<TPixel>(Configuration configuration, Stream stream, IDecoderOptions options)
-
-            where TPixel : struct, IPixel<TPixel>
-        {
-            IGifDecoderOptions gifOptions = GifDecoderOptions.Create(options);
-
-            return this.Decode<TPixel>(configuration, stream, gifOptions);
-        }
+        /// <summary>
+        /// Gets or sets a value indicating whether the metadata should be ignored when the image is being decoded.
+        /// </summary>
+        public bool IgnoreMetadata { get; set; } = false;
 
         /// <summary>
-        /// Decodes the image from the specified stream to the <see cref="ImageBase{TPixel}"/>.
+        /// Gets or sets the encoding that should be used when reading comments.
         /// </summary>
-        /// <typeparam name="TPixel">The pixel format.</typeparam>
-        /// <param name="configuration">The configuration.</param>
-        /// <param name="stream">The <see cref="Stream"/> containing image data.</param>
-        /// <param name="options">The options for the decoder.</param>
-        /// <returns>The image thats been decoded.</returns>
-        public Image<TPixel> Decode<TPixel>(Configuration configuration, Stream stream, IGifDecoderOptions options)
+        public Encoding TextEncoding { get; set; } = GifConstants.DefaultEncoding;
+
+        /// <summary>
+        /// Gets or sets the decoding mode for multi-frame images
+        /// </summary>
+        public FrameDecodingMode DecodingMode { get; set; } = FrameDecodingMode.All;
+
+        /// <inheritdoc/>
+        public Image<TPixel> Decode<TPixel>(Configuration configuration, Stream stream)
             where TPixel : struct, IPixel<TPixel>
         {
-            return new GifDecoderCore<TPixel>(options, configuration).Decode(stream);
+            var decoder = new GifDecoderCore(configuration, this);
+            return decoder.Decode<TPixel>(stream);
+        }
+
+        /// <inheritdoc/>
+        public IImageInfo Identify(Configuration configuration, Stream stream)
+        {
+            Guard.NotNull(stream, nameof(stream));
+
+            var decoder = new GifDecoderCore(configuration, this);
+            return decoder.Identify(stream);
         }
     }
 }

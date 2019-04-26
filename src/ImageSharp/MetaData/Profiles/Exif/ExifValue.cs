@@ -1,31 +1,40 @@
-﻿// <copyright file="ExifValue.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp
+using System;
+using System.Globalization;
+using System.Text;
+using SixLabors.ImageSharp.Primitives;
+
+namespace SixLabors.ImageSharp.Metadata.Profiles.Exif
 {
-    using System;
-    using System.Globalization;
-    using System.Text;
-
     /// <summary>
     /// Represent the value of the EXIF profile.
     /// </summary>
-    public sealed class ExifValue : IEquatable<ExifValue>
+    public sealed class ExifValue : IEquatable<ExifValue>, IDeepCloneable<ExifValue>
     {
         /// <summary>
-        /// The exif value.
+        /// Initializes a new instance of the <see cref="ExifValue"/> class.
         /// </summary>
-        private object exifValue;
+        /// <param name="tag">The tag.</param>
+        /// <param name="dataType">The data type.</param>
+        /// <param name="value">The value.</param>
+        /// <param name="isArray">Whether the value is an array.</param>
+        internal ExifValue(ExifTag tag, ExifDataType dataType, object value, bool isArray)
+        {
+            this.Tag = tag;
+            this.DataType = dataType;
+            this.IsArray = isArray && dataType != ExifDataType.Ascii;
+            this.Value = value;
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ExifValue"/> class
         /// by making a copy from another exif value.
         /// </summary>
         /// <param name="other">The other exif value, where the clone should be made from.</param>
-        /// <exception cref="System.ArgumentNullException"><paramref name="other"/> is null.</exception>
-        public ExifValue(ExifValue other)
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is null.</exception>
+        private ExifValue(ExifValue other)
         {
             Guard.NotNull(other, nameof(other));
 
@@ -35,86 +44,36 @@ namespace ImageSharp
 
             if (!other.IsArray)
             {
-                this.exifValue = other.exifValue;
+                // All types are value types except for string which is immutable so safe to simply assign.
+                this.Value = other.Value;
             }
             else
             {
-                Array array = (Array)other.exifValue;
-                this.exifValue = array.Clone();
+                // All array types are value types so Clone() is sufficient here.
+                var array = (Array)other.Value;
+                this.Value = array.Clone();
             }
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ExifValue"/> class.
-        /// </summary>
-        /// <param name="tag">The tag.</param>
-        /// <param name="dataType">The data type.</param>
-        /// <param name="isArray">Whether the value is an array.</param>
-        internal ExifValue(ExifTag tag, ExifDataType dataType, bool isArray)
-        {
-            this.Tag = tag;
-            this.DataType = dataType;
-            this.IsArray = isArray;
-
-            if (dataType == ExifDataType.Ascii)
-            {
-                this.IsArray = false;
-            }
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ExifValue"/> class.
-        /// </summary>
-        /// <param name="tag">The tag.</param>
-        /// <param name="dataType">The data type.</param>
-        /// <param name="value">The value.</param>
-        /// <param name="isArray">Whether the value is an array.</param>
-        internal ExifValue(ExifTag tag, ExifDataType dataType, object value, bool isArray)
-          : this(tag, dataType, isArray)
-        {
-            this.exifValue = value;
         }
 
         /// <summary>
         /// Gets the data type of the exif value.
         /// </summary>
-        public ExifDataType DataType
-        {
-            get;
-        }
+        public ExifDataType DataType { get; }
 
         /// <summary>
         /// Gets a value indicating whether the value is an array.
         /// </summary>
-        public bool IsArray
-        {
-            get;
-        }
+        public bool IsArray { get; }
 
         /// <summary>
         /// Gets the tag of the exif value.
         /// </summary>
-        public ExifTag Tag
-        {
-            get;
-        }
+        public ExifTag Tag { get; }
 
         /// <summary>
-        /// Gets or sets the value.
+        /// Gets the value.
         /// </summary>
-        public object Value
-        {
-            get
-            {
-                return this.exifValue;
-            }
-
-            set
-            {
-                this.CheckValue(value);
-                this.exifValue = value;
-            }
-        }
+        public object Value { get; }
 
         /// <summary>
         /// Gets a value indicating whether the EXIF value has a value.
@@ -123,14 +82,14 @@ namespace ImageSharp
         {
             get
             {
-                if (this.exifValue == null)
+                if (this.Value is null)
                 {
                     return false;
                 }
 
                 if (this.DataType == ExifDataType.Ascii)
                 {
-                    return ((string)this.exifValue).Length > 0;
+                    return ((string)this.Value).Length > 0;
                 }
 
                 return true;
@@ -144,7 +103,7 @@ namespace ImageSharp
         {
             get
             {
-                if (this.exifValue == null)
+                if (this.Value is null)
                 {
                     return 4;
                 }
@@ -164,12 +123,12 @@ namespace ImageSharp
             {
                 if (this.DataType == ExifDataType.Ascii)
                 {
-                    return Encoding.UTF8.GetBytes((string)this.exifValue).Length;
+                    return Encoding.UTF8.GetBytes((string)this.Value).Length;
                 }
 
                 if (this.IsArray)
                 {
-                    return ((Array)this.exifValue).Length;
+                    return ((Array)this.Value).Length;
                 }
 
                 return 1;
@@ -188,10 +147,7 @@ namespace ImageSharp
         /// <returns>
         /// True if the <paramref name="left"/> parameter is equal to the <paramref name="right"/> parameter; otherwise, false.
         /// </returns>
-        public static bool operator ==(ExifValue left, ExifValue right)
-        {
-            return ExifValue.Equals(left, right);
-        }
+        public static bool operator ==(ExifValue left, ExifValue right) => ReferenceEquals(left, right) || left.Equals(right);
 
         /// <summary>
         /// Compares two <see cref="ExifValue"/> objects for equality.
@@ -205,26 +161,15 @@ namespace ImageSharp
         /// <returns>
         /// True if the <paramref name="left"/> parameter is not equal to the <paramref name="right"/> parameter; otherwise, false.
         /// </returns>
-        public static bool operator !=(ExifValue left, ExifValue right)
-        {
-            return !ExifValue.Equals(left, right);
-        }
+        public static bool operator !=(ExifValue left, ExifValue right) => !(left == right);
 
         /// <inheritdoc />
-        public override bool Equals(object obj)
-        {
-            if (ReferenceEquals(this, obj))
-            {
-                return true;
-            }
-
-            return this.Equals(obj as ExifValue);
-        }
+        public override bool Equals(object obj) => obj is ExifValue other && this.Equals(other);
 
         /// <inheritdoc />
         public bool Equals(ExifValue other)
         {
-            if (ReferenceEquals(other, null))
+            if (other is null)
             {
                 return false;
             }
@@ -235,44 +180,59 @@ namespace ImageSharp
             }
 
             return
-              this.Tag == other.Tag &&
-              this.DataType == other.DataType &&
-              object.Equals(this.exifValue, other.exifValue);
+              this.Tag == other.Tag
+              && this.DataType == other.DataType
+              && object.Equals(this.Value, other.Value);
+        }
+
+        /// <summary>
+        /// Clones the current value, overwriting the value.
+        /// </summary>
+        /// <param name="value">The value to overwrite.</param>
+        /// <returns><see cref="ExifValue"/></returns>
+        public ExifValue WithValue(object value)
+        {
+            this.CheckValue(value);
+
+            return new ExifValue(this.Tag, this.DataType, value, this.IsArray);
         }
 
         /// <inheritdoc/>
         public override int GetHashCode()
         {
-            return this.GetHashCode(this);
+            return HashCode.Combine(this.Tag, this.DataType, this.Value);
         }
 
         /// <inheritdoc/>
         public override string ToString()
         {
-            if (this.exifValue == null)
+            if (this.Value is null)
             {
                 return null;
             }
 
             if (this.DataType == ExifDataType.Ascii)
             {
-                return (string)this.exifValue;
+                return (string)this.Value;
             }
 
             if (!this.IsArray)
             {
-                return this.ToString(this.exifValue);
+                return this.ToString(this.Value);
             }
 
-            StringBuilder sb = new StringBuilder();
-            foreach (object value in (Array)this.exifValue)
+            var sb = new StringBuilder();
+            foreach (object value in (Array)this.Value)
             {
                 sb.Append(this.ToString(value));
-                sb.Append(" ");
+                sb.Append(' ');
             }
 
             return sb.ToString();
         }
+
+        /// <inheritdoc/>
+        public ExifValue DeepClone() => new ExifValue(this);
 
         /// <summary>
         /// Creates a new <see cref="ExifValue"/>
@@ -288,13 +248,6 @@ namespace ImageSharp
         internal static ExifValue Create(ExifTag tag, object value)
         {
             Guard.IsFalse(tag == ExifTag.Unknown, nameof(tag), "Invalid Tag");
-
-            ExifValue exifValue;
-            Type type = value?.GetType();
-            if (type != null && type.IsArray)
-            {
-                type = type.GetElementType();
-            }
 
             switch (tag)
             {
@@ -351,8 +304,7 @@ namespace ImageSharp
                 case ExifTag.GPSDestBearingRef:
                 case ExifTag.GPSDestDistanceRef:
                 case ExifTag.GPSDateStamp:
-                    exifValue = new ExifValue(tag, ExifDataType.Ascii, true);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Ascii, value, true);
 
                 case ExifTag.ClipPath:
                 case ExifTag.VersionYear:
@@ -365,13 +317,12 @@ namespace ImageSharp
                 case ExifTag.XPKeywords:
                 case ExifTag.XPSubject:
                 case ExifTag.GPSVersionID:
-                    exifValue = new ExifValue(tag, ExifDataType.Byte, true);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Byte, value, true);
+
                 case ExifTag.FaxProfile:
                 case ExifTag.ModeNumber:
                 case ExifTag.GPSAltitudeRef:
-                    exifValue = new ExifValue(tag, ExifDataType.Byte, false);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Byte, value, false);
 
                 case ExifTag.FreeOffsets:
                 case ExifTag.FreeByteCounts:
@@ -385,8 +336,7 @@ namespace ImageSharp
                 case ExifTag.StripRowCounts:
                 case ExifTag.IntergraphRegisters:
                 case ExifTag.TimeZoneOffset:
-                    exifValue = new ExifValue(tag, ExifDataType.Long, true);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Long, value, true);
                 case ExifTag.SubfileType:
                 case ExifTag.SubIFDOffset:
                 case ExifTag.GPSIFDOffset:
@@ -408,8 +358,7 @@ namespace ImageSharp
                 case ExifTag.FaxRecvParams:
                 case ExifTag.FaxRecvTime:
                 case ExifTag.ImageNumber:
-                    exifValue = new ExifValue(tag, ExifDataType.Long, false);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Long, value, false);
 
                 case ExifTag.WhitePoint:
                 case ExifTag.PrimaryChromaticities:
@@ -424,8 +373,8 @@ namespace ImageSharp
                 case ExifTag.GPSTimestamp:
                 case ExifTag.GPSDestLatitude:
                 case ExifTag.GPSDestLongitude:
-                    exifValue = new ExifValue(tag, ExifDataType.Rational, true);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Rational, value, true);
+
                 case ExifTag.XPosition:
                 case ExifTag.YPosition:
                 case ExifTag.XResolution:
@@ -459,8 +408,7 @@ namespace ImageSharp
                 case ExifTag.GPSImgDirection:
                 case ExifTag.GPSDestBearing:
                 case ExifTag.GPSDestDistance:
-                    exifValue = new ExifValue(tag, ExifDataType.Rational, false);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Rational, value, false);
 
                 case ExifTag.BitsPerSample:
                 case ExifTag.MinSampleValue:
@@ -483,8 +431,8 @@ namespace ImageSharp
                 case ExifTag.ISOSpeedRatings:
                 case ExifTag.SubjectArea:
                 case ExifTag.SubjectLocation:
-                    exifValue = new ExifValue(tag, ExifDataType.Short, true);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Short, value, true);
+
                 case ExifTag.OldSubfileType:
                 case ExifTag.Compression:
                 case ExifTag.PhotometricInterpretation:
@@ -531,20 +479,18 @@ namespace ImageSharp
                 case ExifTag.Sharpness:
                 case ExifTag.SubjectDistanceRange:
                 case ExifTag.GPSDifferential:
-                    exifValue = new ExifValue(tag, ExifDataType.Short, false);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Short, value, false);
 
                 case ExifTag.Decode:
-                    exifValue = new ExifValue(tag, ExifDataType.SignedRational, true);
-                    break;
+                    return new ExifValue(tag, ExifDataType.SignedRational, value, true);
+
                 case ExifTag.ShutterSpeedValue:
                 case ExifTag.BrightnessValue:
                 case ExifTag.ExposureBiasValue:
                 case ExifTag.AmbientTemperature:
                 case ExifTag.WaterDepth:
                 case ExifTag.CameraElevationAngle:
-                    exifValue = new ExifValue(tag, ExifDataType.SignedRational, false);
-                    break;
+                    return new ExifValue(tag, ExifDataType.SignedRational, value, false);
 
                 case ExifTag.JPEGTables:
                 case ExifTag.OECF:
@@ -561,18 +507,17 @@ namespace ImageSharp
                 case ExifTag.ImageSourceData:
                 case ExifTag.GPSProcessingMethod:
                 case ExifTag.GPSAreaInformation:
-                    exifValue = new ExifValue(tag, ExifDataType.Undefined, true);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Undefined, value, true);
+
                 case ExifTag.FileSource:
                 case ExifTag.SceneType:
-                    exifValue = new ExifValue(tag, ExifDataType.Undefined, false);
-                    break;
+                    return new ExifValue(tag, ExifDataType.Undefined, value, false);
 
                 case ExifTag.StripOffsets:
                 case ExifTag.TileByteCounts:
                 case ExifTag.ImageLayer:
-                    exifValue = CreateNumber(tag, type, true);
-                    break;
+                    return CreateNumber(tag, value, true);
+
                 case ExifTag.ImageWidth:
                 case ExifTag.ImageLength:
                 case ExifTag.TileWidth:
@@ -581,15 +526,11 @@ namespace ImageSharp
                 case ExifTag.ConsecutiveBadFaxLines:
                 case ExifTag.PixelXDimension:
                 case ExifTag.PixelYDimension:
-                    exifValue = CreateNumber(tag, type, false);
-                    break;
+                    return CreateNumber(tag, value, false);
 
                 default:
                     throw new NotSupportedException();
             }
-
-            exifValue.Value = value;
-            return exifValue;
         }
 
         /// <summary>
@@ -631,29 +572,35 @@ namespace ImageSharp
         /// Returns an EXIF value with a numeric type for the given tag.
         /// </summary>
         /// <param name="tag">The tag.</param>
-        /// <param name="type">The numeric type.</param>
+        /// <param name="value">The value.</param>
         /// <param name="isArray">Whether the value is an array.</param>
         /// <returns>
         /// The <see cref="ExifValue"/>.
         /// </returns>
-        private static ExifValue CreateNumber(ExifTag tag, Type type, bool isArray)
+        private static ExifValue CreateNumber(ExifTag tag, object value, bool isArray)
         {
-            if (type == null || type == typeof(ushort))
+            Type type = value?.GetType();
+            if (type?.IsArray == true)
             {
-                return new ExifValue(tag, ExifDataType.Short, isArray);
+                type = type.GetElementType();
+            }
+
+            if (type is null || type == typeof(ushort))
+            {
+                return new ExifValue(tag, ExifDataType.Short, value, isArray);
             }
 
             if (type == typeof(short))
             {
-                return new ExifValue(tag, ExifDataType.SignedShort, isArray);
+                return new ExifValue(tag, ExifDataType.SignedShort, value, isArray);
             }
 
             if (type == typeof(uint))
             {
-                return new ExifValue(tag, ExifDataType.Long, isArray);
+                return new ExifValue(tag, ExifDataType.Long, value, isArray);
             }
 
-            return new ExifValue(tag, ExifDataType.SignedLong, isArray);
+            return new ExifValue(tag, ExifDataType.SignedLong, value, isArray);
         }
 
         /// <summary>
@@ -665,7 +612,7 @@ namespace ImageSharp
         /// </exception>
         private void CheckValue(object value)
         {
-            if (value == null)
+            if (value is null)
             {
                 return;
             }
@@ -735,8 +682,7 @@ namespace ImageSharp
         /// <returns>The <see cref="string"/></returns>
         private string ToString(object value)
         {
-            string description = ExifTagDescriptionAttribute.GetDescription(this.Tag, value);
-            if (description != null)
+            if (ExifTagDescriptionAttribute.GetDescription(this.Tag, value) is string description)
             {
                 return description;
             }
@@ -770,21 +716,6 @@ namespace ImageSharp
                 default:
                     throw new NotSupportedException();
             }
-        }
-
-        /// <summary>
-        /// Returns the hash code for this instance.
-        /// </summary>
-        /// <param name="exif">
-        /// The instance of <see cref="ExifValue"/> to return the hash code for.
-        /// </param>
-        /// <returns>
-        /// A 32-bit signed integer that is the hash code for this instance.
-        /// </returns>
-        private int GetHashCode(ExifValue exif)
-        {
-            int hashCode = exif.Tag.GetHashCode() ^ exif.DataType.GetHashCode();
-            return hashCode ^ exif.exifValue?.GetHashCode() ?? hashCode;
         }
     }
 }

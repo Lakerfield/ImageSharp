@@ -1,10 +1,10 @@
-namespace ImageSharp.Benchmarks.General.Vectorization
+using System.Numerics;
+using System.Runtime.InteropServices;
+
+using BenchmarkDotNet.Attributes;
+
+namespace SixLabors.ImageSharp.Benchmarks.General.Vectorization
 {
-    using System.Numerics;
-    using System.Runtime.InteropServices;
-
-    using BenchmarkDotNet.Attributes;
-
     public class ReinterpretUInt32AsFloat
     {
         private uint[] input;
@@ -25,7 +25,7 @@ namespace ImageSharp.Benchmarks.General.Vectorization
         }
 
 
-        [Setup]
+        [GlobalSetup]
         public void Setup()
         {
             this.input = new uint[this.InputSize];
@@ -40,7 +40,7 @@ namespace ImageSharp.Benchmarks.General.Vectorization
         [Benchmark(Baseline = true)]
         public void Standard()
         {
-            UIntFloatUnion u = default(UIntFloatUnion);
+            UIntFloatUnion u = default;
             for (int i = 0; i < this.input.Length; i++)
             {
                 u.i = this.input[i];

@@ -1,63 +1,70 @@
+// Copyright (c) Six Labors and contributors.
+// Licensed under the Apache License, Version 2.0.
+
 // ReSharper disable InconsistentNaming
-namespace ImageSharp.Benchmarks.Color.Bulk
+
+using System.Buffers;
+using System;
+using System.Numerics;
+
+using BenchmarkDotNet.Attributes;
+
+using SixLabors.ImageSharp.Memory;
+using SixLabors.ImageSharp.PixelFormats;
+
+namespace SixLabors.ImageSharp.Benchmarks.ColorSpaces.Bulk
 {
-    using System.Numerics;
-
-    using BenchmarkDotNet.Attributes;
-
-    using ImageSharp.PixelFormats;
-
     public abstract class ToVector4<TPixel>
         where TPixel : struct, IPixel<TPixel>
     {
-        private Buffer<TPixel> source;
+        protected IMemoryOwner<TPixel> source;
 
-        private Buffer<Vector4> destination;
+        protected IMemoryOwner<Vector4> destination;
 
-        [Params(64, 300, 1024)]
+        protected Configuration Configuration => Configuration.Default;
+
+        [Params(
+            64,
+            256,
+            //512,
+            //1024,
+            2048)]
         public int Count { get; set; }
 
-        [Setup]
+        [GlobalSetup]
         public void Setup()
         {
-            this.source = new Buffer<TPixel>(this.Count);
-            this.destination = new Buffer<Vector4>(this.Count);
+            this.source = this.Configuration.MemoryAllocator.Allocate<TPixel>(this.Count);
+            this.destination = this.Configuration.MemoryAllocator.Allocate<Vector4>(this.Count);
         }
 
-        [Cleanup]
+        [GlobalCleanup]
         public void Cleanup()
         {
             this.source.Dispose();
             this.destination.Dispose();
         }
 
-        [Benchmark(Baseline = true)]
-        public void PerElement()
+        //[Benchmark]
+        public void Naive()
         {
-            TPixel[] s = this.source.Array;
-            Vector4[] d = this.destination.Array;
+            Span<TPixel> s = this.source.GetSpan();
+            Span<Vector4> d = this.destination.GetSpan();
 
             for (int i = 0; i < this.Count; i++)
             {
-                TPixel c = s[i];
-                d[i] = c.ToVector4();
+                d[i] = s[i].ToVector4();
             }
         }
+        
 
         [Benchmark]
-        public void CommonBulk()
+        public void PixelOperations_Specialized()
         {
-            new BulkPixelOperations<TPixel>().ToVector4(this.source, this.destination, this.Count);
+            PixelOperations<TPixel>.Instance.ToVector4(
+                this.Configuration,
+                this.source.GetSpan(),
+                this.destination.GetSpan());
         }
-
-        [Benchmark]
-        public void OptimizedBulk()
-        {
-            BulkPixelOperations<TPixel>.Instance.ToVector4(this.source, this.destination, this.Count);
-        }
-    }
-
-    public class ToVector4_Color : ToVector4<Rgba32>
-    {
     }
 }

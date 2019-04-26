@@ -1,15 +1,17 @@
-﻿namespace ImageSharp.Tests
+﻿// Copyright (c) Six Labors and contributors.
+// Licensed under the Apache License, Version 2.0.
+
+using System;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using Xunit.Abstractions;
+
+namespace SixLabors.ImageSharp.Tests
 {
-    using System;
-    using System.Diagnostics;
-    using System.Runtime.CompilerServices;
-
-    using Xunit.Abstractions;
-
     /// <summary>
     /// Utility class to measure the execution of an operation. It can be used either by inheritance or by composition.
     /// </summary>
-    public class MeasureFixture : TestBase
+    public class MeasureFixture
     {
         /// <summary>
         /// Value indicating whether priniting is enabled.
@@ -24,8 +26,12 @@
         /// <param name="operationName">The name of the operation to print to the output</param>
         public void Measure(int times, Action action, [CallerMemberName] string operationName = null)
         {
-            if (this.EnablePrinting) this.Output?.WriteLine($"{operationName} X {times} ...");
-            Stopwatch sw = Stopwatch.StartNew();
+            if (this.EnablePrinting)
+            {
+                this.Output?.WriteLine($"{operationName} X {times} ...");
+            }
+
+            var sw = Stopwatch.StartNew();
 
             for (int i = 0; i < times; i++)
             {
@@ -33,7 +39,10 @@
             }
 
             sw.Stop();
-            if (this.EnablePrinting) this.Output?.WriteLine($"{operationName} finished in {sw.ElapsedMilliseconds} ms");
+            if (this.EnablePrinting)
+            {
+                this.Output?.WriteLine($"{operationName} finished in {sw.ElapsedMilliseconds} ms");
+            }
         }
 
         /// <summary>
@@ -46,5 +55,28 @@
         }
 
         protected ITestOutputHelper Output { get; }
+    }
+
+    public class MeasureGuard : IDisposable
+    {
+        private readonly string operation;
+
+        private readonly Stopwatch stopwatch = new Stopwatch();
+
+        public MeasureGuard(ITestOutputHelper output, string operation)
+        {
+            this.operation = operation;
+            this.Output = output;
+            this.Output.WriteLine(operation + " ...");
+            this.stopwatch.Start();
+        }
+
+        private ITestOutputHelper Output { get; }
+
+        public void Dispose()
+        {
+            this.stopwatch.Stop();
+            this.Output.WriteLine($"{this.operation} completed in {this.stopwatch.ElapsedMilliseconds}ms");
+        }
     }
 }

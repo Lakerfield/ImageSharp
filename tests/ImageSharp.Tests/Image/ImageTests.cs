@@ -1,130 +1,88 @@
-﻿// <copyright file="PixelAccessorTests.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.Metadata;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Tests.Memory;
+
+using Xunit;
+// ReSharper disable InconsistentNaming
+
+namespace SixLabors.ImageSharp.Tests
 {
-    using System;
-
-    using ImageSharp.Formats;
-
-    using Xunit;
-
     /// <summary>
     /// Tests the <see cref="Image"/> class.
     /// </summary>
-    public class ImageTests
+    public partial class ImageTests
     {
-        [Fact]
-        public void ConstructorByteArray()
+        public class Constructor
         {
-            Assert.Throws<ArgumentNullException>(() =>
+            [Fact]
+            public void Width_Height()
             {
-                Image.Load((byte[])null);
-            });
-
-            TestFile file = TestFile.Create(TestImages.Bmp.Car);
-            using (Image image = Image.Load(file.Bytes))
-            {
-                Assert.Equal(600, image.Width);
-                Assert.Equal(450, image.Height);
-            }
-        }
-
-        [Fact]
-        public void ConstructorFileSystem()
-        {
-            TestFile file = TestFile.Create(TestImages.Bmp.Car);
-            using (Image image = Image.Load(file.FilePath))
-            {
-                Assert.Equal(600, image.Width);
-                Assert.Equal(450, image.Height);
-            }
-        }
-
-        [Fact]
-        public void ConstructorFileSystem_FileNotFound()
-        {
-            System.IO.FileNotFoundException ex = Assert.Throws<System.IO.FileNotFoundException>(
-                () =>
+                using (var image = new Image<Rgba32>(11, 23))
                 {
-                    Image.Load(Guid.NewGuid().ToString());
-                });
-        }
+                    Assert.Equal(11, image.Width);
+                    Assert.Equal(23, image.Height);
+                    Assert.Equal(11*23, image.GetPixelSpan().Length);
+                    image.ComparePixelBufferTo(default(Rgba32));
 
-        [Fact]
-        public void ConstructorFileSystem_NullPath()
-        {
-            ArgumentNullException ex = Assert.Throws<ArgumentNullException>(
-                () =>
+                    Assert.Equal(Configuration.Default, image.GetConfiguration());
+                }
+            }
+
+            [Fact]
+            public void Configuration_Width_Height()
+            {
+                Configuration configuration = Configuration.Default.Clone();
+
+                using (var image = new Image<Rgba32>(configuration, 11, 23))
                 {
-                    Image.Load((string) null);
-                });
-        }
+                    Assert.Equal(11, image.Width);
+                    Assert.Equal(23, image.Height);
+                    Assert.Equal(11 * 23, image.GetPixelSpan().Length);
+                    image.ComparePixelBufferTo(default(Rgba32));
 
-        [Fact]
-        public void Save_DetecedEncoding()
-        {
-            string file = TestFile.GetPath("../../TestOutput/Save_DetecedEncoding.png");
-            System.IO.DirectoryInfo dir = System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file));
-            using (Image image = new Image(10, 10))
-            {
-                image.Save(file);
+                    Assert.Equal(configuration, image.GetConfiguration());
+                }
             }
 
-            TestFile c = TestFile.Create("../../TestOutput/Save_DetecedEncoding.png");
-            using (Image img = c.CreateImage())
+            [Fact]
+            public void Configuration_Width_Height_BackgroundColor()
             {
-                Assert.IsType<PngFormat>(img.CurrentImageFormat);
-            }
-        }
+                Configuration configuration = Configuration.Default.Clone();
+                Rgba32 color = Rgba32.Aquamarine;
 
-        [Fact]
-        public void Save_UnknownExtensionsEncoding()
-        {
-            string file = TestFile.GetPath("../../TestOutput/Save_DetecedEncoding.tmp");
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
-                () =>
-                    {
-                        using (Image image = new Image(10, 10))
-                        {
-                            image.Save(file);
-                        }
-                    });
-        }
+                using (var image = new Image<Rgba32>(configuration, 11, 23, color))
+                {
+                    Assert.Equal(11, image.Width);
+                    Assert.Equal(23, image.Height);
+                    Assert.Equal(11 * 23, image.GetPixelSpan().Length);
+                    image.ComparePixelBufferTo(color);
 
-        [Fact]
-        public void Save_SetFormat()
-        {
-            string file = TestFile.GetPath("../../TestOutput/Save_SetFormat.dat");
-            System.IO.DirectoryInfo dir = System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file));
-            using (Image image = new Image(10, 10))
-            {
-                image.Save(file, new PngFormat());
+                    Assert.Equal(configuration, image.GetConfiguration());
+                }
             }
 
-            TestFile c = TestFile.Create("../../TestOutput/Save_SetFormat.dat");
-            using (Image img = c.CreateImage())
+            [Fact]
+            public void CreateUninitialized()
             {
-                Assert.IsType<PngFormat>(img.CurrentImageFormat);
-            }
-        }
+                Configuration configuration = Configuration.Default.Clone();
 
-        [Fact]
-        public void Save_SetEncoding()
-        {
-            string file = TestFile.GetPath("../../TestOutput/Save_SetEncoding.dat");
-            System.IO.DirectoryInfo dir = System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file));
-            using (Image image = new Image(10, 10))
-            {
-                image.Save(file, new PngEncoder());
-            }
+                byte dirtyValue = 123;
+                configuration.MemoryAllocator = new TestMemoryAllocator(dirtyValue);
+                var metadata = new ImageMetadata();
 
-            TestFile c = TestFile.Create("../../TestOutput/Save_SetEncoding.dat");
-            using (Image img = c.CreateImage())
-            {
-                Assert.IsType<PngFormat>(img.CurrentImageFormat);
+                using (Image<Gray8> image = Image.CreateUninitialized<Gray8>(configuration, 21, 22, metadata))
+                {
+                    Assert.Equal(21, image.Width);
+                    Assert.Equal(22, image.Height);
+                    Assert.Same(configuration, image.GetConfiguration());
+                    Assert.Same(metadata, image.Metadata);
+
+                    Assert.Equal(dirtyValue, image[5, 5].PackedValue);
+                }
             }
         }
     }

@@ -1,13 +1,24 @@
-﻿// <copyright file="Array2D.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Benchmarks.General
+using System;
+
+using BenchmarkDotNet.Attributes;
+
+using SixLabors.ImageSharp.Primitives;
+
+namespace SixLabors.ImageSharp.Benchmarks.General
 {
-    using System;
+    /**
+     *                                Method | Count |     Mean |    Error |   StdDev | Scaled | ScaledSD |
+-------------------------------------------- |------ |---------:|---------:|---------:|-------:|---------:|
+ 'Emulated 2D array access using flat array' |    32 | 224.2 ns | 4.739 ns | 13.75 ns |   0.65 |     0.07 |
+               'Array access using 2D array' |    32 | 346.6 ns | 9.225 ns | 26.91 ns |   1.00 |     0.00 |
+         'Array access using a jagged array' |    32 | 229.3 ns | 6.028 ns | 17.58 ns |   0.67 |     0.07 |
+            'Array access using DenseMatrix' |    32 | 223.2 ns | 5.248 ns | 15.22 ns |   0.65 |     0.07 |
 
-    using BenchmarkDotNet.Attributes;
+     *
+     */
 
     public class Array2D
     {
@@ -17,15 +28,15 @@ namespace ImageSharp.Benchmarks.General
 
         private float[][] jaggedData;
 
-        private Fast2DArray<float> fastData;
-        
-        [Params(4, 16, 128)]
+        private DenseMatrix<float> matrix;
+
+        [Params(4, 16, 32)]
         public int Count { get; set; }
 
         public int Min { get; private set; }
         public int Max { get; private set; }
 
-        [Setup]
+        [GlobalSetup]
         public void SetUp()
         {
             this.flatArray = new float[this.Count * this.Count];
@@ -37,9 +48,9 @@ namespace ImageSharp.Benchmarks.General
                 this.jaggedData[i] = new float[this.Count];
             }
 
-            this.fastData = new Fast2DArray<float>(this.array2D);
+            this.matrix = new DenseMatrix<float>(this.array2D);
 
-            this.Min = this.Count / 2 - 10;
+            this.Min = (this.Count / 2) - 10;
             this.Min = Math.Max(0, this.Min);
             this.Max = this.Min + Math.Min(10, this.Count);
         }
@@ -54,7 +65,9 @@ namespace ImageSharp.Benchmarks.General
             {
                 for (int j = this.Min; j < this.Max; j++)
                 {
-                    s += a[count * i + j];
+                    ref float v = ref a[count * i + j];
+                    v = i * j;
+                    s += v;
                 }
             }
             return s;
@@ -69,7 +82,9 @@ namespace ImageSharp.Benchmarks.General
             {
                 for (int j = this.Min; j < this.Max; j++)
                 {
-                    s += a[i, j];
+                    ref float v = ref a[i, j];
+                    v = i * j;
+                    s += v;
                 }
             }
             return s;
@@ -84,22 +99,26 @@ namespace ImageSharp.Benchmarks.General
             {
                 for (int j = this.Min; j < this.Max; j++)
                 {
-                    s += a[i][j];
+                    ref float v = ref a[i][j];
+                    v = i * j;
+                    s += v;
                 }
             }
             return s;
         }
 
-        [Benchmark(Description = "Array access using Fast2DArray")]
-        public float ArrayFastIndex()
+        [Benchmark(Description = "Array access using DenseMatrix")]
+        public float ArrayMatrixIndex()
         {
             float s = 0;
-            Fast2DArray<float> a = this.fastData;
+            DenseMatrix<float> a = this.matrix;
             for (int i = this.Min; i < this.Max; i++)
             {
                 for (int j = this.Min; j < this.Max; j++)
                 {
-                    s += a[i, j];
+                    ref float v = ref a[i, j];
+                    v = i * j;
+                    s += v;
                 }
             }
             return s;

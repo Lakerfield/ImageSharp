@@ -1,14 +1,12 @@
-﻿// <copyright file="ZlibDeflateStream.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System;
+using System.IO;
+using System.IO.Compression;
+
+namespace SixLabors.ImageSharp.Formats.Png.Zlib
 {
-    using System;
-    using System.IO;
-    using System.IO.Compression;
-
     /// <summary>
     /// Provides methods and properties for compressing streams by using the Zlib Deflate algorithm.
     /// </summary>
@@ -115,26 +113,13 @@ namespace ImageSharp.Formats
         public override bool CanWrite => true;
 
         /// <inheritdoc/>
-        public override long Length
-        {
-            get
-            {
-                throw new NotSupportedException();
-            }
-        }
+        public override long Length => throw new NotSupportedException();
 
         /// <inheritdoc/>
         public override long Position
         {
-            get
-            {
-                throw new NotSupportedException();
-            }
-
-            set
-            {
-                throw new NotSupportedException();
-            }
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
         }
 
         /// <inheritdoc/>
@@ -165,7 +150,7 @@ namespace ImageSharp.Formats
         public override void Write(byte[] buffer, int offset, int count)
         {
             this.deflateStream.Write(buffer, offset, count);
-            this.adler32.Update(buffer, offset, count);
+            this.adler32.Update(buffer.AsSpan(offset, count));
         }
 
         /// <inheritdoc/>

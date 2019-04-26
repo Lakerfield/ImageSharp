@@ -1,15 +1,13 @@
-﻿// <copyright file="SolidProvider.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests
+
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using Xunit.Abstractions;
+
+namespace SixLabors.ImageSharp.Tests
 {
-    using System;
-
-    using ImageSharp.PixelFormats;
-
-    using Xunit.Abstractions;
 
     /// <summary>
     /// Provides <see cref="Image{TPixel}" /> instances for parametric unit tests.
@@ -18,7 +16,7 @@ namespace ImageSharp.Tests
     public abstract partial class TestImageProvider<TPixel>
         where TPixel : struct, IPixel<TPixel>
     {
-        private class SolidProvider : BlankProvider 
+        private class SolidProvider : BlankProvider
         {
             private byte a;
 
@@ -37,6 +35,9 @@ namespace ImageSharp.Tests
                 this.a = a;
             }
 
+            /// <summary>
+            /// This parameterless constructor is needed for xUnit deserialization
+            /// </summary>
             public SolidProvider()
                 : base()
             {
@@ -47,15 +48,16 @@ namespace ImageSharp.Tests
             }
 
             public override string SourceFileOrDescription
-                => $"Solid{this.Width}x{this.Height}_({this.r},{this.g},{this.b},{this.a})";
+                => TestUtils.AsInvariantString($"Solid{this.Width}x{this.Height}_({this.r},{this.g},{this.b},{this.a})");
 
             public override Image<TPixel> GetImage()
             {
                 Image<TPixel> image = base.GetImage();
                 TPixel color = default(TPixel);
-                color.PackFromBytes(this.r, this.g, this.b, this.a);
+                color.FromRgba32(new Rgba32(this.r, this.g, this.b, this.a));
 
-                return image.Fill(color);
+                image.Mutate(x => x.Fill(color));
+                return image;
             }
 
             public override void Serialize(IXunitSerializationInfo info)

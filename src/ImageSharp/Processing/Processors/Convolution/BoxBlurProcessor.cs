@@ -1,16 +1,14 @@
-﻿// <copyright file="BoxBlurProcessor.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Processing.Processors
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Primitives;
+using SixLabors.Primitives;
+
+namespace SixLabors.ImageSharp.Processing.Processors.Convolution
 {
-    using System;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
-    /// Applies a Box blur sampler to the image.
+    /// Applies box blur processing to the image.
     /// </summary>
     /// <typeparam name="TPixel">The pixel format.</typeparam>
     internal class BoxBlurProcessor<TPixel> : ImageProcessor<TPixel>
@@ -29,69 +27,41 @@ namespace ImageSharp.Processing.Processors
         /// </param>
         public BoxBlurProcessor(int radius = 7)
         {
+            this.Radius = radius;
             this.kernelSize = (radius * 2) + 1;
-            this.KernelX = this.CreateBoxKernel(true);
-            this.KernelY = this.CreateBoxKernel(false);
+            this.KernelX = this.CreateBoxKernel();
+            this.KernelY = this.KernelX.Transpose();
         }
+
+        /// <summary>
+        /// Gets the Radius
+        /// </summary>
+        public int Radius { get; }
 
         /// <summary>
         /// Gets the horizontal gradient operator.
         /// </summary>
-        public Fast2DArray<float> KernelX { get; }
+        public DenseMatrix<float> KernelX { get; }
 
         /// <summary>
         /// Gets the vertical gradient operator.
         /// </summary>
-        public Fast2DArray<float> KernelY { get; }
+        public DenseMatrix<float> KernelY { get; }
 
         /// <inheritdoc/>
-        protected override void OnApply(ImageBase<TPixel> source, Rectangle sourceRectangle)
-        {
-            new Convolution2PassProcessor<TPixel>(this.KernelX, this.KernelY).Apply(source, sourceRectangle);
-        }
+        protected override void OnFrameApply(ImageFrame<TPixel> source, Rectangle sourceRectangle, Configuration configuration)
+            => new Convolution2PassProcessor<TPixel>(this.KernelX, this.KernelY, false).Apply(source, sourceRectangle, configuration);
 
         /// <summary>
         /// Create a 1 dimensional Box kernel.
         /// </summary>
-        /// <param name="horizontal">Whether to calculate a horizontal kernel.</param>
-        /// <returns>The <see cref="Fast2DArray{T}"/></returns>
-        private Fast2DArray<float> CreateBoxKernel(bool horizontal)
+        /// <returns>The <see cref="DenseMatrix{T}"/></returns>
+        private DenseMatrix<float> CreateBoxKernel()
         {
             int size = this.kernelSize;
-            Fast2DArray<float> kernel = horizontal
-                ? new Fast2DArray<float>(size, 1)
-                : new Fast2DArray<float>(1, size);
+            var kernel = new DenseMatrix<float>(size, 1);
 
-            float sum = 0F;
-            for (int i = 0; i < size; i++)
-            {
-                float x = 1;
-                sum += x;
-                if (horizontal)
-                {
-                    kernel[0, i] = x;
-                }
-                else
-                {
-                    kernel[i, 0] = x;
-                }
-            }
-
-            // Normalize kernel so that the sum of all weights equals 1
-            if (horizontal)
-            {
-                for (int i = 0; i < size; i++)
-                {
-                    kernel[0, i] = kernel[0, i] / sum;
-                }
-            }
-            else
-            {
-                for (int i = 0; i < size; i++)
-                {
-                    kernel[i, 0] = kernel[i, 0] / sum;
-                }
-            }
+            kernel.Fill(1F / size);
 
             return kernel;
         }

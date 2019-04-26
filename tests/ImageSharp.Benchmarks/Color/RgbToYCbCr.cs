@@ -1,14 +1,15 @@
-﻿namespace ImageSharp.Benchmarks
+﻿// Copyright (c) Six Labors and contributors.
+// Licensed under the Apache License, Version 2.0.
+
+using System.Numerics;
+using System.Runtime.CompilerServices;
+
+using BenchmarkDotNet.Attributes;
+
+using SixLabors.ImageSharp.Formats.Jpeg.Components;
+
+namespace SixLabors.ImageSharp.Benchmarks
 {
-    using System;
-    using System.Buffers;
-    using System.Numerics;
-    using System.Runtime.CompilerServices;
-
-    using BenchmarkDotNet.Attributes;
-
-    using ImageSharp.Formats.Jpg;
-
     public partial class RgbToYCbCr
     {
         private const int InputColorCount = 64;
@@ -102,21 +103,21 @@
                 }
             }
         }
-        
+
         public struct Result
         {
             internal Block8x8F Y;
             internal Block8x8F Cb;
             internal Block8x8F Cr;
         }
-        
+
         // The operation is defined as "RGBA -> YCbCr Transform a stream of bytes into a stream of floats"
         // We need to benchmark the whole operation, to get true results, not missing any side effects!
         private byte[] inputSourceRGB = null;
 
         private int[] inputSourceRGBAsInteger = null;
 
-        [Setup]
+        [GlobalSetup]
         public void Setup()
         {
             // Console.WriteLine("Vector<int>.Count: " + Vector<int>.Count);
@@ -135,7 +136,7 @@
             OnStackInputCache.Byte input = OnStackInputCache.Byte.Create(this.inputSourceRGB);
 
             // On-stack output:
-            Result result = default(Result);
+            Result result = default;
             float* yPtr = (float*)&result.Y;
             float* cbPtr = (float*)&result.Cb;
             float* crPtr = (float*)&result.Cr;
@@ -161,7 +162,7 @@
             OnStackInputCache.Byte input = OnStackInputCache.Byte.Create(this.inputSourceRGB);
 
             // On-stack output:
-            Result result = default(Result);
+            Result result = default;
             float* yPtr = (float*)&result.Y;
             float* cbPtr = (float*)&result.Cb;
             float* crPtr = (float*)&result.Cr;
@@ -181,17 +182,6 @@
                 Vector3 vectorCb = VectorCb * vectorRgb;
                 Vector3 vectorCr = VectorCr * vectorRgb;
 
-                // Should be better in theory, but came out to be worse: :(
-                // Vector3 c = new Vector3(0, 128, 128);
-                // Vector3 xx = new Vector3(vectorY.X, vectorCb.X, vectorCr.X);
-                // Vector3 yy = new Vector3(vectorY.Y, -vectorCb.Y, -vectorCr.Y);
-                // Vector3 zz = new Vector3(vectorY.Z, vectorCb.Z, -vectorCr.Z);
-
-                // c += xx + yy + zz;
-                // *yPtr++ = c.X;
-                // *cbPtr++ = c.Y;
-                // *crPtr++ = c.Z;
-
                 *yPtr++ = vectorY.X + vectorY.Y + vectorY.Z;
                 *cbPtr++ = 128 + (vectorCb.X - vectorCb.Y + vectorCb.Z);
                 *crPtr++ = 128 + (vectorCr.X - vectorCr.Y - vectorCr.Z);
@@ -204,16 +194,16 @@
             // Copy the input to the stack:
 
             // On-stack output:
-            Result result = default(Result);
+            Result result = default;
             float* yPtr = (float*)&result.Y;
             float* cbPtr = (float*)&result.Cb;
             float* crPtr = (float*)&result.Cr;
             // end of code-bloat block :)
-            
-            Vector<int> yCoeffs = new Vector<int>(ScaledCoeffs.Y);
-            Vector<int> cbCoeffs = new Vector<int>(ScaledCoeffs.Cb);
-            Vector<int> crCoeffs = new Vector<int>(ScaledCoeffs.Cr);
-            
+
+            var yCoeffs = new Vector<int>(ScaledCoeffs.Y);
+            var cbCoeffs = new Vector<int>(ScaledCoeffs.Cb);
+            var crCoeffs = new Vector<int>(ScaledCoeffs.Cr);
+
             for (int i = 0; i < this.inputSourceRGB.Length; i++)
             {
                 this.inputSourceRGBAsInteger[i] = this.inputSourceRGB[i];
@@ -226,7 +216,7 @@
                 Vector<int> y = yCoeffs * rgb;
                 Vector<int> cb = cbCoeffs * rgb;
                 Vector<int> cr = crCoeffs * rgb;
-                
+
                 *yPtr++ = (y[0] + y[1] + y[2]) >> 10;
                 *cbPtr++ = 128 + ((cb[0] - cb[1] + cb[2]) >> 10);
                 *crPtr++ = 128 + ((cr[0] - cr[1] - cr[2]) >> 10);
@@ -250,23 +240,23 @@
             // Copy the input to the stack:
 
             // On-stack output:
-            Result result = default(Result);
+            Result result = default;
             float* yPtr = (float*)&result.Y;
             float* cbPtr = (float*)&result.Cb;
             float* crPtr = (float*)&result.Cr;
             // end of code-bloat block :)
 
-            Vector<int> yCoeffs = new Vector<int>(ScaledCoeffs.Y);
-            Vector<int> cbCoeffs = new Vector<int>(ScaledCoeffs.Cb);
-            Vector<int> crCoeffs = new Vector<int>(ScaledCoeffs.Cr);
+            var yCoeffs = new Vector<int>(ScaledCoeffs.Y);
+            var cbCoeffs = new Vector<int>(ScaledCoeffs.Cb);
+            var crCoeffs = new Vector<int>(ScaledCoeffs.Cr);
 
-            Vector<int> leftY = new Vector<int>(ScaledCoeffs.SelectLeft.Y);
-            Vector<int> leftCb = new Vector<int>(ScaledCoeffs.SelectLeft.Cb);
-            Vector<int> leftCr = new Vector<int>(ScaledCoeffs.SelectLeft.Cr);
+            var leftY = new Vector<int>(ScaledCoeffs.SelectLeft.Y);
+            var leftCb = new Vector<int>(ScaledCoeffs.SelectLeft.Cb);
+            var leftCr = new Vector<int>(ScaledCoeffs.SelectLeft.Cr);
 
-            Vector<int> rightY = new Vector<int>(ScaledCoeffs.SelectRight.Y);
-            Vector<int> rightCb = new Vector<int>(ScaledCoeffs.SelectRight.Cb);
-            Vector<int> rightCr = new Vector<int>(ScaledCoeffs.SelectRight.Cr);
+            var rightY = new Vector<int>(ScaledCoeffs.SelectRight.Y);
+            var rightCb = new Vector<int>(ScaledCoeffs.SelectRight.Cb);
+            var rightCr = new Vector<int>(ScaledCoeffs.SelectRight.Cr);
 
             for (int i = 0; i < this.inputSourceRGB.Length; i++)
             {
@@ -344,7 +334,7 @@
                 *crPtr++ = 128 + ((cr0 - cr1 - cr2) >> 10);
             }
         }
-        
+
         [Benchmark(Description = "Scaled Integer LUT Conversion")]
         public unsafe void RgbaToYcbCrScaledIntegerLut()
         {

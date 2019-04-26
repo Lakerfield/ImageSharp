@@ -1,27 +1,27 @@
-﻿// <copyright file="JpegEncoder.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats
+using System.IO;
+using SixLabors.ImageSharp.PixelFormats;
+
+namespace SixLabors.ImageSharp.Formats.Jpeg
 {
-    using System.IO;
-
-    using ImageSharp.PixelFormats;
-
     /// <summary>
     /// Encoder for writing the data image to a stream in jpeg format.
     /// </summary>
-    public class JpegEncoder : IImageEncoder
+    public sealed class JpegEncoder : IImageEncoder, IJpegEncoderOptions
     {
-        /// <inheritdoc/>
-        public void Encode<TPixel>(Image<TPixel> image, Stream stream, IEncoderOptions options)
-            where TPixel : struct, IPixel<TPixel>
-        {
-            IJpegEncoderOptions gifOptions = JpegEncoderOptions.Create(options);
+        /// <summary>
+        /// Gets or sets the quality, that will be used to encode the image. Quality
+        /// index must be between 0 and 100 (compression from max to min).
+        /// Defaults to <value>75</value>.
+        /// </summary>
+        public int? Quality { get; set; }
 
-            this.Encode(image, stream, gifOptions);
-        }
+        /// <summary>
+        /// Gets or sets the subsample ration, that will be used to encode the image.
+        /// </summary>
+        public JpegSubsample? Subsample { get; set; }
 
         /// <summary>
         /// Encodes the image to the specified stream from the <see cref="Image{TPixel}"/>.
@@ -29,12 +29,11 @@ namespace ImageSharp.Formats
         /// <typeparam name="TPixel">The pixel format.</typeparam>
         /// <param name="image">The <see cref="Image{TPixel}"/> to encode from.</param>
         /// <param name="stream">The <see cref="Stream"/> to encode the image data to.</param>
-        /// <param name="options">The options for the encoder.</param>
-        public void Encode<TPixel>(Image<TPixel> image, Stream stream, IJpegEncoderOptions options)
-            where TPixel : struct, IPixel<TPixel>
+        public void Encode<TPixel>(Image<TPixel> image, Stream stream)
+        where TPixel : struct, IPixel<TPixel>
         {
-            JpegEncoderCore encode = new JpegEncoderCore(options);
-            encode.Encode(image, stream);
+            var encoder = new JpegEncoderCore(this);
+            encoder.Encode(image, stream);
         }
     }
 }

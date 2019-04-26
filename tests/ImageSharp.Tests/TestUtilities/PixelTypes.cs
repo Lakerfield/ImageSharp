@@ -1,18 +1,16 @@
-﻿// <copyright file="PixelTypes.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Tests
+using System;
+
+namespace SixLabors.ImageSharp.Tests
 {
-    using System;
-
     /// <summary>
     /// Flags that are mapped to PackedPixel types.
     /// They trigger the desired parametrization for <see cref="TestImageProvider{TPixel}"/>.
     /// </summary>
     [Flags]
-    public enum PixelTypes : uint
+    public enum PixelTypes
     {
         Undefined = 0,
 
@@ -52,10 +50,13 @@ namespace ImageSharp.Tests
 
         Short4 = 1 << 17,
 
-        /// <summary>
-        /// Triggers instantiating the <see cref="Image"/> subclass of <see cref="Image{TPixel}"/>
-        /// </summary>
-        StandardImageClass = 1 << 29,
+        Rgb24 = 1 << 18,
+
+        Bgr24 = 1 << 19,
+
+        Bgra32 = 1 << 20,
+
+        Rgb48 = 1 << 21,
 
         // TODO: Add multi-flag entries by rules defined in PackedPixelConverterHelper
 

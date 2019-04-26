@@ -1,35 +1,25 @@
-﻿// <copyright file="Block8x8F.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
+
+using System;
+using System.Diagnostics;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text;
+
 // ReSharper disable InconsistentNaming
-namespace ImageSharp.Formats.Jpg
+namespace SixLabors.ImageSharp.Formats.Jpeg.Components
 {
-    using System;
-    using System.Buffers;
-    using System.Numerics;
-    using System.Runtime.CompilerServices;
-    using System.Runtime.InteropServices;
-
     /// <summary>
-    /// DCT code Ported from https://github.com/norishigefukushima/dct_simd
+    /// Represents a Jpeg block with <see cref="float"/> coefficients.
     /// </summary>
-    internal partial struct Block8x8F
+    internal partial struct Block8x8F : IEquatable<Block8x8F>
     {
-        // Most of the static methods of this struct are instance methods by actual semantics: they use Block8x8F* as their first parameter.
-        // Example: GetScalarAt() and SetScalarAt() are really just other (optimized) versions of the indexer.
-        // It's much cleaner, easier and safer to work with the code, if the methods with same semantics are next to each other.
-#pragma warning disable SA1204 // StaticElementsMustAppearBeforeInstanceElements
-
         /// <summary>
-        /// Vector count
+        /// A number of scalar coefficients in a <see cref="Block8x8F"/>
         /// </summary>
-        public const int VectorCount = 16;
-
-        /// <summary>
-        /// Scalar count
-        /// </summary>
-        public const int ScalarCount = VectorCount * 4;
+        public const int Size = 64;
 
 #pragma warning disable SA1600 // ElementsMustBeDocumented
         public Vector4 V0L;
@@ -57,104 +47,149 @@ namespace ImageSharp.Formats.Jpg
         public Vector4 V7R;
 #pragma warning restore SA1600 // ElementsMustBeDocumented
 
+        private static readonly Vector4 NegativeOne = new Vector4(-1);
+        private static readonly Vector4 Offset = new Vector4(.5F);
+
         /// <summary>
         /// Get/Set scalar elements at a given index
         /// </summary>
         /// <param name="idx">The index</param>
         /// <returns>The float value at the specified index</returns>
-        public unsafe float this[int idx]
+        public float this[int idx]
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(InliningOptions.ShortMethod)]
             get
             {
-                fixed (Block8x8F* p = &this)
-                {
-                    float* fp = (float*)p;
-                    return fp[idx];
-                }
+                GuardBlockIndex(idx);
+                ref float selfRef = ref Unsafe.As<Block8x8F, float>(ref this);
+                return Unsafe.Add(ref selfRef, idx);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(InliningOptions.ShortMethod)]
             set
             {
-                fixed (Block8x8F* p = &this)
-                {
-                    float* fp = (float*)p;
-                    fp[idx] = value;
-                }
+                GuardBlockIndex(idx);
+                ref float selfRef = ref Unsafe.As<Block8x8F, float>(ref this);
+                Unsafe.Add(ref selfRef, idx) = value;
             }
         }
 
-        /// <summary>
-        /// Pointer-based "Indexer" (getter part)
-        /// </summary>
-        /// <param name="blockPtr">Block pointer</param>
-        /// <param name="idx">Index</param>
-        /// <returns>The scaleVec value at the specified index</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe float GetScalarAt(Block8x8F* blockPtr, int idx)
+        public float this[int x, int y]
         {
-            float* fp = (float*)blockPtr;
-            return fp[idx];
+            get => this[(y * 8) + x];
+            set => this[(y * 8) + x] = value;
+        }
+
+        public static Block8x8F operator *(Block8x8F block, float value)
+        {
+            Block8x8F result = block;
+            for (int i = 0; i < Size; i++)
+            {
+                float val = result[i];
+                val *= value;
+                result[i] = val;
+            }
+
+            return result;
+        }
+
+        public static Block8x8F operator /(Block8x8F block, float value)
+        {
+            Block8x8F result = block;
+            for (int i = 0; i < Size; i++)
+            {
+                float val = result[i];
+                val /= value;
+                result[i] = val;
+            }
+
+            return result;
+        }
+
+        public static Block8x8F operator +(Block8x8F block, float value)
+        {
+            Block8x8F result = block;
+            for (int i = 0; i < Size; i++)
+            {
+                float val = result[i];
+                val += value;
+                result[i] = val;
+            }
+
+            return result;
+        }
+
+        public static Block8x8F operator -(Block8x8F block, float value)
+        {
+            Block8x8F result = block;
+            for (int i = 0; i < Size; i++)
+            {
+                float val = result[i];
+                val -= value;
+                result[i] = val;
+            }
+
+            return result;
+        }
+
+        public static Block8x8F Load(Span<float> data)
+        {
+            Block8x8F result = default;
+            result.LoadFrom(data);
+            return result;
+        }
+
+        public static Block8x8F Load(Span<int> data)
+        {
+            Block8x8F result = default;
+            result.LoadFrom(data);
+            return result;
         }
 
         /// <summary>
-        /// Pointer-based "Indexer" (setter part)
+        /// Fill the block with defaults (zeroes).
         /// </summary>
-        /// <param name="blockPtr">Block pointer</param>
-        /// <param name="idx">Index</param>
-        /// <param name="value">Value</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe void SetScalarAt(Block8x8F* blockPtr, int idx, float value)
-        {
-            float* fp = (float*)blockPtr;
-            fp[idx] = value;
-        }
-
-        /// <summary>
-        /// Fill the block with defaults (zeroes)
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(InliningOptions.ShortMethod)]
         public void Clear()
         {
             // The cheapest way to do this in C#:
-            this = default(Block8x8F);
+            this = default;
         }
 
         /// <summary>
-        /// Load raw 32bit floating point data from source
+        /// Load raw 32bit floating point data from source.
         /// </summary>
         /// <param name="source">Source</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe void LoadFrom(MutableSpan<float> source)
+        [MethodImpl(InliningOptions.ShortMethod)]
+        public void LoadFrom(Span<float> source)
         {
-            fixed (void* ptr = &this.V0L)
-            {
-                Marshal.Copy(source.Data, source.Offset, (IntPtr)ptr, ScalarCount);
-            }
+            ref byte s = ref Unsafe.As<float, byte>(ref MemoryMarshal.GetReference(source));
+            ref byte d = ref Unsafe.As<Block8x8F, byte>(ref this);
+
+            Unsafe.CopyBlock(ref d, ref s, Size * sizeof(float));
         }
 
         /// <summary>
-        /// Load raw 32bit floating point data from source
+        /// Load raw 32bit floating point data from source.
         /// </summary>
         /// <param name="blockPtr">Block pointer</param>
         /// <param name="source">Source</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe void LoadFrom(Block8x8F* blockPtr, MutableSpan<float> source)
+        [MethodImpl(InliningOptions.ShortMethod)]
+        public static unsafe void LoadFrom(Block8x8F* blockPtr, Span<float> source)
         {
-            Marshal.Copy(source.Data, source.Offset, (IntPtr)blockPtr, ScalarCount);
+            blockPtr->LoadFrom(source);
         }
 
         /// <summary>
         /// Load raw 32bit floating point data from source
         /// </summary>
         /// <param name="source">Source</param>
-        public unsafe void LoadFrom(MutableSpan<int> source)
+        public unsafe void LoadFrom(Span<int> source)
         {
             fixed (Vector4* ptr = &this.V0L)
             {
                 float* fp = (float*)ptr;
-                for (int i = 0; i < ScalarCount; i++)
+                for (int i = 0; i < Size; i++)
                 {
                     fp[i] = source[i];
                 }
@@ -162,28 +197,28 @@ namespace ImageSharp.Formats.Jpg
         }
 
         /// <summary>
-        /// Copy raw 32bit floating point data to dest
+        /// Copy raw 32bit floating point data to dest,
         /// </summary>
         /// <param name="dest">Destination</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe void CopyTo(MutableSpan<float> dest)
+        [MethodImpl(InliningOptions.ShortMethod)]
+        public void CopyTo(Span<float> dest)
         {
-            fixed (void* ptr = &this.V0L)
-            {
-                Marshal.Copy((IntPtr)ptr, dest.Data, dest.Offset, ScalarCount);
-            }
+            ref byte d = ref Unsafe.As<float, byte>(ref MemoryMarshal.GetReference(dest));
+            ref byte s = ref Unsafe.As<Block8x8F, byte>(ref this);
+
+            Unsafe.CopyBlock(ref d, ref s, Size * sizeof(float));
         }
 
         /// <summary>
-        /// Convert salars to byte-s and copy to dest
+        /// Convert salars to byte-s and copy to dest,
         /// </summary>
         /// <param name="blockPtr">Pointer to block</param>
         /// <param name="dest">Destination</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe void CopyTo(Block8x8F* blockPtr, MutableSpan<byte> dest)
+        [MethodImpl(InliningOptions.ShortMethod)]
+        public static unsafe void CopyTo(Block8x8F* blockPtr, Span<byte> dest)
         {
             float* fPtr = (float*)blockPtr;
-            for (int i = 0; i < ScalarCount; i++)
+            for (int i = 0; i < Size; i++)
             {
                 dest[i] = (byte)*fPtr;
                 fPtr++;
@@ -191,26 +226,26 @@ namespace ImageSharp.Formats.Jpg
         }
 
         /// <summary>
-        /// Copy raw 32bit floating point data to dest
+        /// Copy raw 32bit floating point data to dest.
         /// </summary>
-        /// <param name="blockPtr">Block pointer</param>
-        /// <param name="dest">Destination</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe void CopyTo(Block8x8F* blockPtr, MutableSpan<float> dest)
+        /// <param name="blockPtr">The block pointer.</param>
+        /// <param name="dest">The destination.</param>
+        [MethodImpl(InliningOptions.ShortMethod)]
+        public static unsafe void CopyTo(Block8x8F* blockPtr, Span<float> dest)
         {
-            Marshal.Copy((IntPtr)blockPtr, dest.Data, dest.Offset, ScalarCount);
+            blockPtr->CopyTo(dest);
         }
 
         /// <summary>
         /// Copy raw 32bit floating point data to dest
         /// </summary>
         /// <param name="dest">Destination</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(InliningOptions.ShortMethod)]
         public unsafe void CopyTo(float[] dest)
         {
             fixed (void* ptr = &this.V0L)
             {
-                Marshal.Copy((IntPtr)ptr, dest, 0, ScalarCount);
+                Marshal.Copy((IntPtr)ptr, dest, 0, Size);
             }
         }
 
@@ -218,48 +253,79 @@ namespace ImageSharp.Formats.Jpg
         /// Copy raw 32bit floating point data to dest
         /// </summary>
         /// <param name="dest">Destination</param>
-        public unsafe void CopyTo(MutableSpan<int> dest)
+        public unsafe void CopyTo(Span<int> dest)
         {
             fixed (Vector4* ptr = &this.V0L)
             {
                 float* fp = (float*)ptr;
-                for (int i = 0; i < ScalarCount; i++)
+                for (int i = 0; i < Size; i++)
                 {
                     dest[i] = (int)fp[i];
                 }
             }
         }
 
+        public float[] ToArray()
+        {
+            float[] result = new float[Size];
+            this.CopyTo(result);
+            return result;
+        }
+
         /// <summary>
         /// Multiply all elements of the block.
         /// </summary>
-        /// <param name="scaleVec">Vector to multiply by</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void MultiplyAllInplace(float scaleVec)
+        /// <param name="value">The value to multiply by.</param>
+        [MethodImpl(InliningOptions.ShortMethod)]
+        public void MultiplyInplace(float value)
         {
-            this.V0L *= scaleVec;
-            this.V0R *= scaleVec;
-            this.V1L *= scaleVec;
-            this.V1R *= scaleVec;
-            this.V2L *= scaleVec;
-            this.V2R *= scaleVec;
-            this.V3L *= scaleVec;
-            this.V3R *= scaleVec;
-            this.V4L *= scaleVec;
-            this.V4R *= scaleVec;
-            this.V5L *= scaleVec;
-            this.V5R *= scaleVec;
-            this.V6L *= scaleVec;
-            this.V6R *= scaleVec;
-            this.V7L *= scaleVec;
-            this.V7R *= scaleVec;
+            this.V0L *= value;
+            this.V0R *= value;
+            this.V1L *= value;
+            this.V1R *= value;
+            this.V2L *= value;
+            this.V2R *= value;
+            this.V3L *= value;
+            this.V3R *= value;
+            this.V4L *= value;
+            this.V4R *= value;
+            this.V5L *= value;
+            this.V5R *= value;
+            this.V6L *= value;
+            this.V6R *= value;
+            this.V7L *= value;
+            this.V7R *= value;
+        }
+
+        /// <summary>
+        /// Multiply all elements of the block by the corresponding elements of 'other'.
+        /// </summary>
+        [MethodImpl(InliningOptions.ShortMethod)]
+        public void MultiplyInplace(ref Block8x8F other)
+        {
+            this.V0L *= other.V0L;
+            this.V0R *= other.V0R;
+            this.V1L *= other.V1L;
+            this.V1R *= other.V1R;
+            this.V2L *= other.V2L;
+            this.V2R *= other.V2R;
+            this.V3L *= other.V3L;
+            this.V3R *= other.V3R;
+            this.V4L *= other.V4L;
+            this.V4R *= other.V4R;
+            this.V5L *= other.V5L;
+            this.V5R *= other.V5R;
+            this.V6L *= other.V6L;
+            this.V6R *= other.V6R;
+            this.V7L *= other.V7L;
+            this.V7R *= other.V7R;
         }
 
         /// <summary>
         /// Adds a vector to all elements of the block.
         /// </summary>
         /// <param name="diff">The added vector</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(InliningOptions.ShortMethod)]
         public void AddToAllInplace(Vector4 diff)
         {
             this.V0L += diff;
@@ -281,70 +347,46 @@ namespace ImageSharp.Formats.Jpg
         }
 
         /// <summary>
-        /// Un-zig
+        /// Quantize the block.
         /// </summary>
-        /// <param name="blockPtr">Block pointer</param>
-        /// <param name="qtPtr">Qt pointer</param>
+        /// <param name="blockPtr">The block pointer.</param>
+        /// <param name="qtPtr">The qt pointer.</param>
         /// <param name="unzigPtr">Unzig pointer</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe void UnZig(Block8x8F* blockPtr, Block8x8F* qtPtr, int* unzigPtr)
+        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static unsafe void DequantizeBlock(Block8x8F* blockPtr, Block8x8F* qtPtr, byte* unzigPtr)
         {
             float* b = (float*)blockPtr;
             float* qtp = (float*)qtPtr;
-            for (int zig = 0; zig < ScalarCount; zig++)
+            for (int qtIndex = 0; qtIndex < Size; qtIndex++)
             {
-                float* unzigPos = b + unzigPtr[zig];
+                byte blockIndex = unzigPtr[qtIndex];
+                float* unzigPos = b + blockIndex;
+
                 float val = *unzigPos;
-                val *= qtp[zig];
+                val *= qtp[qtIndex];
                 *unzigPos = val;
             }
         }
 
         /// <summary>
-        /// Level shift by +128, clip to [0, 255], and write to buffer.
-        /// </summary>
-        /// <param name="buffer">Color buffer</param>
-        /// <param name="stride">Stride offset</param>
-        /// <param name="tempBlockPtr">Temp Block pointer</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe void CopyColorsTo(MutableSpan<byte> buffer, int stride, Block8x8F* tempBlockPtr)
-        {
-            this.TransformByteConvetibleColorValuesInto(ref *tempBlockPtr);
-
-            float* src = (float*)tempBlockPtr;
-            for (int i = 0; i < 8; i++)
-            {
-                buffer[0] = (byte)src[0];
-                buffer[1] = (byte)src[1];
-                buffer[2] = (byte)src[2];
-                buffer[3] = (byte)src[3];
-                buffer[4] = (byte)src[4];
-                buffer[5] = (byte)src[5];
-                buffer[6] = (byte)src[6];
-                buffer[7] = (byte)src[7];
-                buffer.AddOffset(stride);
-                src += 8;
-            }
-        }
-
-        /// <summary>
+        /// Quantize 'block' into 'dest' using the 'qt' quantization table:
         /// Unzig the elements of block into dest, while dividing them by elements of qt and "pre-rounding" the values.
         /// To finish the rounding it's enough to (int)-cast these values.
         /// </summary>
         /// <param name="block">Source block</param>
         /// <param name="dest">Destination block</param>
         /// <param name="qt">The quantization table</param>
-        /// <param name="unzigPtr">Pointer to elements of <see cref="UnzigData"/></param>
-        public static unsafe void UnzigDivRound(
+        /// <param name="unzigPtr">Pointer to elements of <see cref="ZigZag"/></param>
+        public static unsafe void Quantize(
             Block8x8F* block,
             Block8x8F* dest,
             Block8x8F* qt,
-            int* unzigPtr)
+            byte* unzigPtr)
         {
             float* s = (float*)block;
             float* d = (float*)dest;
 
-            for (int zig = 0; zig < ScalarCount; zig++)
+            for (int zig = 0; zig < Size; zig++)
             {
                 d[zig] = s[unzigPtr[zig]];
             }
@@ -353,7 +395,7 @@ namespace ImageSharp.Formats.Jpg
         }
 
         /// <summary>
-        /// Scales the 16x16 region represented by the 4 source blocks to the 8x8  DST block.
+        /// Scales the 16x16 region represented by the 4 source blocks to the 8x8 DST block.
         /// </summary>
         /// <param name="destination">The destination block.</param>
         /// <param name="source">The source block.</param>
@@ -378,7 +420,7 @@ namespace ImageSharp.Formats.Jpg
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(InliningOptions.ShortMethod)]
         private static void DivideRoundAll(ref Block8x8F a, ref Block8x8F b)
         {
             a.V0L = DivideRound(a.V0L, b.V0L);
@@ -399,15 +441,165 @@ namespace ImageSharp.Formats.Jpg
             a.V7R = DivideRound(a.V7R, b.V7R);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void RoundInto(ref Block8x8 dest)
+        {
+            for (int i = 0; i < Size; i++)
+            {
+                float val = this[i];
+                if (val < 0)
+                {
+                    val -= 0.5f;
+                }
+                else
+                {
+                    val += 0.5f;
+                }
+
+                dest[i] = (short)val;
+            }
+        }
+
+        public Block8x8 RoundAsInt16Block()
+        {
+            Block8x8 result = default;
+            this.RoundInto(ref result);
+            return result;
+        }
+
+        /// <summary>
+        /// Level shift by +maximum/2, clip to [0..maximum], and round all the values in the block.
+        /// </summary>
+        public void NormalizeColorsAndRoundInplace(float maximum)
+        {
+            if (SimdUtils.IsAvx2CompatibleArchitecture)
+            {
+                this.NormalizeColorsAndRoundInplaceAvx2(maximum);
+            }
+            else
+            {
+                this.NormalizeColorsInplace(maximum);
+                this.RoundInplace();
+            }
+        }
+
+        /// <summary>
+        /// Rounds all values in the block.
+        /// </summary>
+        public void RoundInplace()
+        {
+            for (int i = 0; i < Size; i++)
+            {
+                this[i] = MathF.Round(this[i]);
+            }
+        }
+
+        [MethodImpl(InliningOptions.ShortMethod)]
+        public void LoadFrom(ref Block8x8 source)
+        {
+#if SUPPORTS_EXTENDED_INTRINSICS
+            if (SimdUtils.IsAvx2CompatibleArchitecture)
+            {
+                this.LoadFromInt16ExtendedAvx2(ref source);
+                return;
+            }
+#endif
+            this.LoadFromInt16Scalar(ref source);
+        }
+
+        /// <summary>
+        /// Loads values from <paramref name="source"/> using extended AVX2 intrinsics.
+        /// </summary>
+        /// <param name="source">The source <see cref="Block8x8"/></param>
+        public void LoadFromInt16ExtendedAvx2(ref Block8x8 source)
+        {
+            DebugGuard.IsTrue(
+                SimdUtils.IsAvx2CompatibleArchitecture,
+                "LoadFromUInt16ExtendedAvx2 only works on AVX2 compatible architecture!");
+
+            ref Vector<short> sRef = ref Unsafe.As<Block8x8, Vector<short>>(ref source);
+            ref Vector<float> dRef = ref Unsafe.As<Block8x8F, Vector<float>>(ref this);
+
+            // Vector<ushort>.Count == 16 on AVX2
+            // We can process 2 block rows in a single step
+            SimdUtils.ExtendedIntrinsics.ConvertToSingle(sRef, out Vector<float> top, out Vector<float> bottom);
+            dRef = top;
+            Unsafe.Add(ref dRef, 1) = bottom;
+
+            SimdUtils.ExtendedIntrinsics.ConvertToSingle(Unsafe.Add(ref sRef, 1), out top, out bottom);
+            Unsafe.Add(ref dRef, 2) = top;
+            Unsafe.Add(ref dRef, 3) = bottom;
+
+            SimdUtils.ExtendedIntrinsics.ConvertToSingle(Unsafe.Add(ref sRef, 2), out top, out bottom);
+            Unsafe.Add(ref dRef, 4) = top;
+            Unsafe.Add(ref dRef, 5) = bottom;
+
+            SimdUtils.ExtendedIntrinsics.ConvertToSingle(Unsafe.Add(ref sRef, 3), out top, out bottom);
+            Unsafe.Add(ref dRef, 6) = top;
+            Unsafe.Add(ref dRef, 7) = bottom;
+        }
+
+        /// <inheritdoc />
+        public bool Equals(Block8x8F other)
+        {
+            return this.V0L == other.V0L
+            && this.V0R == other.V0R
+            && this.V1L == other.V1L
+            && this.V1R == other.V1R
+            && this.V2L == other.V2L
+            && this.V2R == other.V2R
+            && this.V3L == other.V3L
+            && this.V3R == other.V3R
+            && this.V4L == other.V4L
+            && this.V4R == other.V4R
+            && this.V5L == other.V5L
+            && this.V5R == other.V5R
+            && this.V6L == other.V6L
+            && this.V6R == other.V6R
+            && this.V7L == other.V7L
+            && this.V7R == other.V7R;
+        }
+
+        /// <inheritdoc />
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+            sb.Append('[');
+            for (int i = 0; i < Size - 1; i++)
+            {
+                sb.Append(this[i]);
+                sb.Append(',');
+            }
+
+            sb.Append(this[Size - 1]);
+
+            sb.Append(']');
+            return sb.ToString();
+        }
+
+        [MethodImpl(InliningOptions.ShortMethod)]
+        private static Vector<float> NormalizeAndRound(Vector<float> row, Vector<float> off, Vector<float> max)
+        {
+            row += off;
+            row = Vector.Max(row, Vector<float>.Zero);
+            row = Vector.Min(row, max);
+            return row.FastRound();
+        }
+
+        [MethodImpl(InliningOptions.ShortMethod)]
         private static Vector4 DivideRound(Vector4 dividend, Vector4 divisor)
         {
-            // sign(v) = max(min(v, 1), -1)
-            Vector4 sign = Vector4.Min(dividend, Vector4.One);
-            sign = Vector4.Max(sign, new Vector4(-1));
+            // sign(dividend) = max(min(dividend, 1), -1)
+            var sign = Vector4.Clamp(dividend, NegativeOne, Vector4.One);
 
-            // AlmostRound(dividend/divisor) = dividend/divisior + 0.5*sign(dividend)
-            return (dividend / divisor) + (sign * new Vector4(0.5f));
+            // AlmostRound(dividend/divisor) = dividend/divisor + 0.5*sign(dividend)
+            return (dividend / divisor) + (sign * Offset);
+        }
+
+        [Conditional("DEBUG")]
+        private static void GuardBlockIndex(int idx)
+        {
+            DebugGuard.MustBeLessThan(idx, Size, nameof(idx));
+            DebugGuard.MustBeGreaterThanOrEqualTo(idx, 0, nameof(idx));
         }
     }
 }

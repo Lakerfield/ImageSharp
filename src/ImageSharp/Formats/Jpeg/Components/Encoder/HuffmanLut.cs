@@ -1,9 +1,7 @@
-﻿// <copyright file="HuffmanLut.cs" company="James Jackson-South">
-// Copyright (c) James Jackson-South and contributors.
+﻿// Copyright (c) Six Labors and contributors.
 // Licensed under the Apache License, Version 2.0.
-// </copyright>
 
-namespace ImageSharp.Formats.Jpg
+namespace SixLabors.ImageSharp.Formats.Jpeg.Components.Encoder
 {
     /// <summary>
     /// A compiled look-up table representation of a huffmanSpec.
@@ -11,7 +9,7 @@ namespace ImageSharp.Formats.Jpg
     /// codeword size in bits and the 24 least significant bits hold the codeword.
     /// The maximum codeword size is 16 bits.
     /// </summary>
-    internal struct HuffmanLut
+    internal readonly struct HuffmanLut
     {
         /// <summary>
         /// The compiled representations of theHuffmanSpec.
